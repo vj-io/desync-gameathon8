@@ -1,0 +1,10 @@
+{
+  "name": "Desync.UI.Tests",
+  "rootNamespace": "Desync.UI.Tests",
+  "references": ["Desync.Core","Desync.UI","Unity.TextMeshPro","Unity.InputSystem","UnityEngine.UI","UnityEngine.TestRunner"],
+  "includePlatforms": [],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

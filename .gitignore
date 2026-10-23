@@ -16,3 +16,4 @@ logs/
 create.log
 .DS_Store
 node_modules/
+DESYNC/Assets/InitTestScene*

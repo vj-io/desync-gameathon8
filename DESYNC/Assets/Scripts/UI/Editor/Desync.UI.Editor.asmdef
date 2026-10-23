@@ -1,0 +1,7 @@
+{
+  "name": "Desync.UI.Editor",
+  "rootNamespace": "Desync.UI.Editor",
+  "references": ["Desync.Core","Desync.UI","Unity.TextMeshPro"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

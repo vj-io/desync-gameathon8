@@ -1,6 +1,6 @@
 {
   "name": "Desync.UI",
   "rootNamespace": "Desync.UI",
-  "references": ["Desync.Core","Unity.TextMeshPro","Unity.InputSystem","PrimeTween.Runtime"],
+  "references": ["Desync.Core","Unity.TextMeshPro","Unity.InputSystem","PrimeTween.Runtime","UnityEngine.UI"],
   "autoReferenced": true
 }
