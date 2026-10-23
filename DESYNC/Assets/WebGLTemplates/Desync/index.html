@@ -47,7 +47,7 @@
     html #focus small { margin-top: 14px; font: 12px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .15em; color: var(--dim); }
     .hide { opacity: 0; visibility: hidden; }
 
-    html #fs { position: absolute; right: 10px; bottom: 10px; z-index: 2; padding: 5px 10px; cursor: pointer;
+    html #fs { margin-left: 8px; padding: 5px 10px; cursor: pointer;
       font: 11px Orbitron, sans-serif; letter-spacing: .2em; color: var(--green); background: rgba(0, 0, 0, .6);
       border: 1px solid #1c4130; opacity: .55; transition: opacity .15s; }
     html #fs:hover { opacity: 1; border-color: var(--green); }
@@ -58,6 +58,7 @@
   <header>
     <div class="logo">DESYNC</div>
     <div class="tag">break the simulation</div>
+    <button id="fs" type="button" tabindex="-1">FULLSCREEN</button>
   </header>
 
   <div id="stage">
@@ -70,7 +71,6 @@
         <div id="msg"></div>
       </div>
       <div id="focus" class="overlay hide">CLICK TO FOCUS<small>mouse + keyboard</small></div>
-      <button id="fs" type="button" tabindex="-1">FULLSCREEN</button>
     </div>
   </div>
 
@@ -84,6 +84,13 @@
       var $ = function (id) { return document.getElementById(id); };
       var stage = $("stage"), canvas = $("unity-canvas"), loading = $("loading"), focusEl = $("focus"), fsBtn = $("fs");
       var focused = false;
+
+      // Browsers reject requestPointerLock (e.g. Chrome within ~1 s of Esc). Unity's loader treats any unhandled rejection
+      // as a fatal error dialog; registered first, this listener swallows only pointer-lock rejections. The game already
+      // treats "not locked" as paused and re-requests on the next click.
+      window.addEventListener("unhandledrejection", function (e) {
+        if (/pointer ?lock/i.test(String(e.reason && (e.reason.message || e.reason)))) { e.preventDefault(); e.stopImmediatePropagation(); }
+      });
 
       function fail(msg) {
         $("pct").textContent = "FAILED TO LOAD";
