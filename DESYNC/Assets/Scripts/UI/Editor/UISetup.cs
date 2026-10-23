@@ -1,8 +1,6 @@
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -12,13 +10,12 @@ namespace Desync.UI.Editor
 {
     /// UI workstream setup (idempotent). Run: tools/unity.sh exec ui Desync.UI.Editor.UISetup.Run
     /// Builds static SDF TMP font assets from the OFL TTFs in Assets/Fonts/Source, registers font.hud / font.term /
-    /// font.title / font.symbols in AssetLib, creates a TMP Settings asset (so the TMP importer window never opens) and
-    /// regenerates Resources/Credits.txt from credits/*.md. Rebuild() forces the atlases to be regenerated.
+    /// font.title / font.symbols in AssetLib, creates a TMP Settings asset (so the TMP importer window never opens).
+    /// Rebuild() forces the atlases to be regenerated.
     public static class UISetup
     {
         const string Src = "Assets/Fonts/Source/";
         const string Out = "Assets/Fonts/";
-        const string CreditsTxt = "Assets/Scripts/UI/Resources/Credits.txt";
 
         static readonly string Ascii = BuildRange(0x20, 0x7E);
         static readonly string Latin1 = BuildRange(0xA0, 0xFF) + "–—‘’“”•…€";
@@ -42,10 +39,9 @@ namespace Desync.UI.Editor
             AssetLib.Put("font.title", title);
             AssetLib.Put("font.symbols", sym);
             TmpSettings(hud);    // now that the fonts exist, make Share Tech Mono the TMP default
-            RefreshCredits();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[DESYNC] UISetup done: fonts hud/term/title/symbols registered, TMP Settings ok, Credits.txt written");
+            Debug.Log("[DESYNC] UISetup done: fonts hud/term/title/symbols registered, TMP Settings ok");
         }
 
         /// The ugui package ships TMP's shaders + default settings as a .unitypackage that has to be imported once.
@@ -168,66 +164,6 @@ namespace Desync.UI.Editor
             so.ApplyModifiedProperties();
             EditorUtility.SetDirty(s);
             AssetDatabase.SaveAssets();
-        }
-
-        /// Regenerates Assets/Scripts/UI/Resources/Credits.txt from ../credits/*.md (plain text, font-safe).
-        public static void RefreshCredits()
-        {
-            string dir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "credits"));
-            var sb = new StringBuilder();
-            if (Directory.Exists(dir))
-            {
-                var files = Directory.GetFiles(dir, "*.md");
-                System.Array.Sort(files, System.StringComparer.Ordinal);
-                foreach (var f in files)
-                {
-                    sb.AppendLine("== " + Path.GetFileNameWithoutExtension(f).ToUpperInvariant() + " ==");
-                    foreach (var raw in File.ReadAllLines(f)) AppendLine(sb, raw);
-                    sb.AppendLine();
-                }
-            }
-            if (sb.Length == 0) sb.AppendLine("Credits are compiled from credits/*.md.");
-            Directory.CreateDirectory(Path.GetDirectoryName(CreditsTxt));
-            File.WriteAllText(CreditsTxt, sb.ToString().TrimEnd() + "\n", new UTF8Encoding(false));
-            AssetDatabase.ImportAsset(CreditsTxt);
-        }
-
-        static readonly Regex Link = new Regex(@"\[([^\]]*)\]\(([^)]*)\)");
-
-        static void AppendLine(StringBuilder sb, string raw)
-        {
-            string l = raw.Trim();
-            if (l.Length == 0) { sb.AppendLine(); return; }
-            if (l.StartsWith("|"))
-            {
-                if (Regex.IsMatch(l, @"^\|[\s:\-|]+\|?$")) return;   // table separator
-                var cells = l.Trim('|').Split('|');
-                for (int i = 0; i < cells.Length; i++) cells[i] = cells[i].Trim();
-                l = string.Join(" · ", cells);
-            }
-            else if (l.StartsWith("#")) { l = l.TrimStart('#').Trim().ToUpperInvariant(); sb.AppendLine(); }
-            else if (l.StartsWith("- ") || l.StartsWith("* ")) l = "· " + l.Substring(2);
-            l = Link.Replace(l, "$1 ($2)").Replace("**", "").Replace("`", "").Replace("__", "");
-            sb.AppendLine(Ascii7(l));
-        }
-
-        /// Strip diacritics and anything the baked atlases cannot show.
-        static string Ascii7(string s)
-        {
-            var d = s.Normalize(NormalizationForm.FormD);
-            var sb = new StringBuilder(d.Length);
-            foreach (char c in d)
-            {
-                var cat = CharUnicodeInfo.GetUnicodeCategory(c);
-                if (cat == UnicodeCategory.NonSpacingMark) continue;
-                if (c == '“' || c == '”') sb.Append('"');
-                else if (c == '‘' || c == '’') sb.Append('\'');
-                else if (c == '–' || c == '—' || c == '·' || c == '×') sb.Append(c);
-                else if (c >= 0x20 && c <= 0x7E) sb.Append(c);
-                else if (c == '\t') sb.Append(' ');
-                else sb.Append('?');
-            }
-            return sb.ToString();
         }
     }
 }
