@@ -15,3 +15,9 @@
 **D-007 Out of scope for now.** Leaderboard backend and analytics provider need accounts and secrets; the client is built provider-agnostic and the backend lands in M4. Hosted CI for Unity needs a licence secret; until then `tools/test.sh` runs the same gates locally.
 
 **D-008 Repository content.** No credits or disclosure screens inside the game build; licence attributions stay in `CREDITS.md`.
+
+**D-009 Room par and dev times.** `parScore` per room = 1000 (clear) + 500 (no trace) + 300 × 1.5 per terminal + 4 × 50 × 1.5 (clean flips), rounded to 50, so 1800 + 450 × terminals: BOOT and EYES 2250, ICE, HIJACK and UNSTABLE 2700, ROOT 3150. Hijack pads are not counted. `tDev` stays 0 (unknown, per `GameState.RoomTDev`) until a LevelBuilder run logs the validator's `fastest` time; then `tDev` = fastest × 1.3 rounded to 0.5 s. Values live in `DESYNC/Assets/Resources/Content/rooms.json`.
+
+**D-010 Dev times filled.** tDev from the shipped build's validator `fastest` times (R1 7.5, R2 17.2, R3 17.5, R4 29.9, R5 26.8, R6 20.5 s) × 1.3 rounded to 0.5 s: 10.0, 22.5, 23.0, 39.0, 35.0, 26.5.
+
+**D-011 Enemy stats by room kind.** The six classic rooms keep their tuned stats (camera 60° × 8 m sweeping ±45° over 3 s, drone 2.5 m/s × 6 m, glitch force-flip after 3 s). Generated BREACH rooms use the spec stats (fixed camera 60° × 12 m; sweep camera 90° arc, 8 s period, 10 m; drone 3 m/s × 10 m; glitch force-flip after 1.0 s with a 0.5 s telegraph) through factory overloads.
