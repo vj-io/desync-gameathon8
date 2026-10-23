@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace Desync
 {
     /// Polled shared state (HUD, post-FX, audio read it every frame). Writers noted per field.
@@ -23,6 +25,8 @@ namespace Desync
         public static float GlitchCountdown = -1f; // GlitchZone, -1 = not inside one
         public static string InteractPrompt;       // Interactor: non-null while looking at an IInteractable
         public static RoomResult[] Results = new RoomResult[6];   // RoomManager, per room best/last result (UI ending screen)
+        public static int IceAlive;                // IceVent/IceHunter: live hunters this frame
+        public static Vector3 NearestIce;          // IceHunter: position of the hunter nearest the player (valid when IceAlive > 0)
         public static float Pulse;                 // FlipController/JuiceUtil: 0..1 post-FX pulse
         public static bool God;                    // DebugBridge "god on": RoomManager ignores PlayerKilled, MeltMeter frozen
         public static float HijackRemaining;       // HijackedDrone, seconds left while HijackActive (HUD hijack timer)
