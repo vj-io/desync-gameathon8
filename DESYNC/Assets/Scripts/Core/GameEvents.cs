@@ -8,11 +8,40 @@ namespace Desync
     public struct RoomResult
     {
         public int room;
+        public int score;
+        public Desync.Rules.Medal medal;
         public float time;
         public int traces;
         public int flips;
         public int bestCombo;
         public char grade;   // 'S','A','B','C'
+    }
+
+    public struct ScorePop { public Desync.Rules.EventType type; public int points; public float multiplier; public string label; }
+
+    public struct DeathInfo
+    {
+        public DeathCause cause;
+        public string killerId;        // e.g. "ICE-2"; null when none
+        public Vector3 killerPos;      // valid when killerId != null
+        public float roomTime;
+        public string nearMiss;        // one TRUE near-miss stat, or null (never fabricate)
+    }
+
+    public sealed class RoomReport
+    {
+        public int room;
+        public int eventsScore;        // sum of event points (already multiplied)
+        public float peakMultiplier;
+        public int timeBonus;
+        public int total;
+        public float time;
+        public Desync.Rules.Medal medal;
+        public char grade;
+        public float prevBestTime;     // 0 when none
+        public int prevBestScore;
+        public string nextTarget;      // e.g. "0.8 s to GOLD", "S needs: no TRACE"; null when maxed
+        public string shareText;
     }
 
     /// Global event bus. Raise with GameEvents.X?.Invoke(...). Subscribe in OnEnable, unsubscribe in OnDisable.
@@ -70,6 +99,14 @@ namespace Desync
         public static Action QuitRequested;                 // pause menu quit to title
         public static Action<bool> LevelSelectToggled;      // F2 panel shown/hidden (Flow raises on F2)
         public static Action SettingsChanged;               // Settings.* written; Flow applies render scale etc.
+
+        // Scoring / mastery (M1)
+        public static Action<ScorePop> Scored;              // every scoring event (CleanFlip, Graze, Redline, Hack...), for HUD pops
+        public static Action<DeathInfo> DeathRecap;         // Flow: shown for up to 1.2 s (any key skips), then REBOOT
+        public static Action<RoomReport> RoomReportReady;   // Flow: results tally; UI waits for R (RestartRequested) / SPACE (ContinueRequested) / C (CopyRequested)
+        public static Action ContinueRequested;             // UI -> Flow: leave results, go to next room/node
+        public static Action<string> CopyRequested;         // UI -> Net: copy text to clipboard
+        public static Action<string> Hint;                  // Flow: contextual hint after 3 deaths in a room
 
         // Juice requests (any system may raise; JuiceUtil executes, honouring Settings)
         public static Action<float> ShakeRequest;           // strength 0..1

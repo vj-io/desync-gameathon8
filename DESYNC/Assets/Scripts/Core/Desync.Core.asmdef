@@ -1,6 +1,6 @@
 {
   "name": "Desync.Core",
   "rootNamespace": "Desync",
-  "references": ["Unity.InputSystem"],
+  "references": ["Unity.InputSystem", "Desync.Rules"],
   "autoReferenced": true
 }
