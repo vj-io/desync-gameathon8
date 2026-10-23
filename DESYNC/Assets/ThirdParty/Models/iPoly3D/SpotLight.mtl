@@ -1,0 +1,13 @@
+# converted from glTF (CC0 source, see LICENSE)
+newmtl SpotLight_c0
+Kd 0.1562 0.1562 0.1562
+
+newmtl SpotLight_c1
+Kd 0.6875 0.6875 0.6875
+
+newmtl SpotLight_c2
+Kd 0.9062 0.9062 0.9062
+
+newmtl SpotLight_c3
+Kd 0.9688 0.9688 0.9688
+

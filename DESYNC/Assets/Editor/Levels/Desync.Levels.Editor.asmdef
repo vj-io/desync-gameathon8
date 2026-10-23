@@ -1,0 +1,16 @@
+{
+  "name": "Desync.Levels.Editor",
+  "rootNamespace": "Desync.Levels.Editor",
+  "references": [
+    "Desync.Core",
+    "Desync.Levels",
+    "Desync.Player",
+    "Desync.Enemies",
+    "Desync.Art",
+    "Unity.AI.Navigation",
+    "Unity.AI.Navigation.Editor",
+    "Unity.TextMeshPro"
+  ],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

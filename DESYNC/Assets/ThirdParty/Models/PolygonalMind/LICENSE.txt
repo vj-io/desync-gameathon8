@@ -1,0 +1,7 @@
+Model by Polygonal Mind, distributed via Poly Pizza.
+License: Creative Commons Zero (CC0 1.0) - https://creativecommons.org/publicdomain/zero/1.0/
+
+ManHead.obj  <- "Man"  https://poly.pizza/m/3w4Bgw7Phn
+
+Modifications (DESYNC): converted from GLB to OBJ+MTL, cropped to the head (top ~25% of the figure), cigarette removed,
+rotated to face +Z, texture palette colours baked into per-material Kd colours. Used as the Architect's face.

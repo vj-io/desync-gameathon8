@@ -1,0 +1,7 @@
+Models by iPoly3D, distributed via Poly Pizza.
+License: Creative Commons Zero (CC0 1.0) - https://creativecommons.org/publicdomain/zero/1.0/
+
+SpotLight.obj  <- "Spot Light"  https://poly.pizza/m/eaQqgLn0oJ   (used as the security camera housing)
+Crystal.obj    <- "Crystal"     https://poly.pizza/m/WzWPKHFMkL   (used as the ICE shard)
+
+Modifications (DESYNC): converted from GLB to OBJ+MTL; texture palette colours baked into per-material Kd colours.

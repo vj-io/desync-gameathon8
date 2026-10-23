@@ -1,0 +1,9 @@
+Models by Quaternius (https://quaternius.com), distributed via Poly Pizza.
+License: Creative Commons Zero (CC0 1.0) - https://creativecommons.org/publicdomain/zero/1.0/
+
+Computer.obj          <- "Computer"            https://poly.pizza/m/emxvTSMKnt
+ScifiComputer.obj     <- "Scifi Computer"      https://poly.pizza/m/U0xmt6tUlL
+Vent.obj              <- "Vent"                https://poly.pizza/m/UDFcnJ0U73
+RobotEnemyFlying.obj  <- "Robot Enemy Flying"  https://poly.pizza/m/lF3jeRJwiH
+
+Modifications (DESYNC): converted from GLB to OBJ+MTL (material base colours kept as Kd; skinned model posed at rest).

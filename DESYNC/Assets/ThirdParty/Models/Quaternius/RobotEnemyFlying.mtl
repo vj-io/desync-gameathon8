@@ -1,0 +1,16 @@
+# converted from glTF (CC0 source, see LICENSE)
+newmtl RobotEnemyFlying_c0
+Kd 0.7812 0.7812 0.7812
+
+newmtl RobotEnemyFlying_c1
+Kd 0.9062 0.6250 0.2812
+
+newmtl RobotEnemyFlying_c2
+Kd 0.9062 0.9062 0.9062
+
+newmtl RobotEnemyFlying_c3
+Kd 0.2188 0.2188 0.2188
+
+newmtl RobotEnemyFlying_c4
+Kd 0.9062 0.0625 0.0000
+

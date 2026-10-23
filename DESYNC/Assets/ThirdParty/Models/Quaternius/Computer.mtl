@@ -1,0 +1,13 @@
+# converted from glTF (CC0 source, see LICENSE)
+newmtl Computer_c0
+Kd 0.5312 0.5312 0.5312
+
+newmtl Computer_c1
+Kd 0.5938 0.4062 0.2188
+
+newmtl Computer_c2
+Kd 0.4688 0.4688 0.4688
+
+newmtl Computer_c3
+Kd 0.3438 0.4688 0.4688
+

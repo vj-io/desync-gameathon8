@@ -1,0 +1,16 @@
+# converted from glTF (CC0 source, see LICENSE)
+newmtl ScifiComputer_c0
+Kd 0.6562 0.6562 0.6562
+
+newmtl ScifiComputer_c1
+Kd 0.5312 0.5312 0.5312
+
+newmtl ScifiComputer_c2
+Kd 0.7812 0.5938 0.2812
+
+newmtl ScifiComputer_c3
+Kd 0.2188 0.2188 0.2188
+
+newmtl ScifiComputer_c4
+Kd 0.5000 0.3750 0.1875
+

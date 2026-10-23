@@ -12,4 +12,150 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 505333ece076f476d8e7e4ce9ffcc542, type: 3}
   m_Name: AssetLib
   m_EditorClassIdentifier: Desync.Core::Desync.AssetLib
-  entries: []
+  entries:
+  - key: mat.world
+    value: {fileID: 2100000, guid: 06f272b8242904a4d9d1428c49801782, type: 2}
+  - key: mat.floor
+    value: {fileID: 2100000, guid: 370e536d5bb1c451da3716ec1fa099d1, type: 2}
+  - key: mat.drone
+    value: {fileID: 2100000, guid: ec611c72f849d4b1f9e1d93bd7936d92, type: 2}
+  - key: mat.hijacked
+    value: {fileID: 2100000, guid: dfe1e69d5a36c429b8e228c4da0032cd, type: 2}
+  - key: mat.ice
+    value: {fileID: 2100000, guid: 2739cc4c0881b474d9d622e3a23947ec, type: 2}
+  - key: mat.cone
+    value: {fileID: 2100000, guid: e13eb628b535f4b91ae1649eb788c1a9, type: 2}
+  - key: mat.cone.trace
+    value: {fileID: 2100000, guid: eaf3b8d43cf0f4cbaaaa13a35248722e, type: 2}
+  - key: mat.ice.trail
+    value: {fileID: 2100000, guid: 27348bae9a1c841e084ef05c78ad1db5, type: 2}
+  - key: mat.portal
+    value: {fileID: 2100000, guid: d2cd3801c89f1492a9dcdef0bffd8df7, type: 2}
+  - key: mat.portal.locked
+    value: {fileID: 2100000, guid: 9b66346b3dc954bf9bf2062a58332c1a, type: 2}
+  - key: mat.architect
+    value: {fileID: 2100000, guid: 80055f68fc7bc4a8daa0b9de293fa33d, type: 2}
+  - key: mat.strings
+    value: {fileID: 2100000, guid: c6b307800de434fcaa45fe4793c41fae, type: 2}
+  - key: mat.lkp
+    value: {fileID: 2100000, guid: b60db41551fe040caa396dc6e60c01a7, type: 2}
+  - key: mat.glitch
+    value: {fileID: 2100000, guid: 2e9d9175121134ba4b9921c8f29df629, type: 2}
+  - key: mat.decal
+    value: {fileID: 2100000, guid: f7802f559d7484a3cb814941364ecc52, type: 2}
+  - key: mat.poster
+    value: {fileID: 2100000, guid: 8cf7bf3663797412580345174d976b68, type: 2}
+  - key: mat.screen
+    value: {fileID: 2100000, guid: 7bb6e7fcbe0594b38a5b045a8d9606e2, type: 2}
+  - key: tex.glyphs
+    value: {fileID: 2800000, guid: 03cc46ac743424c6981997eecb3ad00b, type: 3}
+  - key: mat.glyphrain
+    value: {fileID: 2100000, guid: 20d01dee8ac924d1787b8f9000ae4b18, type: 2}
+  - key: music.render
+    value: {fileID: 8300000, guid: ea929a63b11594a73aec0233591c3a58, type: 3}
+  - key: music.source
+    value: {fileID: 8300000, guid: 61b7da767e1814cddb21cb0aef60d9cd, type: 3}
+  - key: music.render.lp
+    value: {fileID: 8300000, guid: bbde598c572ae4c91806d1a832b14f30, type: 3}
+  - key: music.source.lp
+    value: {fileID: 8300000, guid: ebe59ed8767db42149539d0691f90af9, type: 3}
+  - key: sfx.flip.source
+    value: {fileID: 8300000, guid: 4166e8ecab22c41a6813399447e95aad, type: 3}
+  - key: sfx.flip.render
+    value: {fileID: 8300000, guid: 29a65b407455c4f93a4fca71e0d42e91, type: 3}
+  - key: sfx.flip.reject
+    value: {fileID: 8300000, guid: 6ee3f182442384780a77594391a7b56d, type: 3}
+  - key: sfx.camera.tick
+    value: {fileID: 8300000, guid: e290a85f6845c43ba9768314370fc27f, type: 3}
+  - key: sfx.alarm
+    value: {fileID: 8300000, guid: a0a44f867e977413ea668584b5568786, type: 3}
+  - key: sfx.ice.windup
+    value: {fileID: 8300000, guid: 9cbee6f67a14247eebf5ee34c181a8b6, type: 3}
+  - key: sfx.ice.shriek
+    value: {fileID: 8300000, guid: 787707def5284428b846703ceb7b7946, type: 3}
+  - key: sfx.hack.tick
+    value: {fileID: 8300000, guid: 09cf9fc546f4e444287ea0b5930be320, type: 3}
+  - key: sfx.hack.wrong
+    value: {fileID: 8300000, guid: a3ad946065c354ec284078ab53d7c26f, type: 3}
+  - key: sfx.hack.start
+    value: {fileID: 8300000, guid: 0a1d307c36eed47f78f1157ecc813f8f, type: 3}
+  - key: sfx.hack.cancel
+    value: {fileID: 8300000, guid: d1d13f6ea5792483bba215dfc4ee4f54, type: 3}
+  - key: sfx.access
+    value: {fileID: 8300000, guid: 55607539be7be46b3abc497b887cfcb3, type: 3}
+  - key: sfx.heartbeat
+    value: {fileID: 8300000, guid: cb85201c6b9be45f39ed57c5927215c1, type: 3}
+  - key: sfx.flatline
+    value: {fileID: 8300000, guid: 3aadc854de4e543b396ef8f75409170e, type: 3}
+  - key: sfx.death
+    value: {fileID: 8300000, guid: d7aa003d075fd4d12a4ffc8a14838f27, type: 3}
+  - key: sfx.roomclear
+    value: {fileID: 8300000, guid: 9b132810486ef4f9a830c5268af85473, type: 3}
+  - key: sfx.reboot
+    value: {fileID: 8300000, guid: fb26b5337e3e24f50b1deaa0672dff23, type: 3}
+  - key: sfx.portal
+    value: {fileID: 8300000, guid: 9adbd43e39e9e4ecb8971ecbecc31c3e, type: 3}
+  - key: sfx.finale
+    value: {fileID: 8300000, guid: 657d27ab933f940a086b1b4129d4e71f, type: 3}
+  - key: sfx.hijack.on
+    value: {fileID: 8300000, guid: 454cba307f6884cfbaab8c6f249d1aea, type: 3}
+  - key: sfx.hijack.off
+    value: {fileID: 8300000, guid: e2e86bfd26c3e43ba87449b3f056aef5, type: 3}
+  - key: sfx.glitch.beep
+    value: {fileID: 8300000, guid: 8ee2fb2d67bad443088dc834fbb0322a, type: 3}
+  - key: sfx.ui.click
+    value: {fileID: 8300000, guid: ad5b884a32eba48fa9ec749604272ec3, type: 3}
+  - key: sfx.ui.pop
+    value: {fileID: 8300000, guid: 05299b7ccaa9b440da7bf3334c1e7f01, type: 3}
+  - key: sfx.footstep.render.0
+    value: {fileID: 8300000, guid: d0311450279864108a2038b79d8c47f7, type: 3}
+  - key: sfx.footstep.render.1
+    value: {fileID: 8300000, guid: ba6f03479ccd24c868435a8e8d183a8c, type: 3}
+  - key: sfx.footstep.render.2
+    value: {fileID: 8300000, guid: 52c33143e227e42f5b5745cb4e5bdcc9, type: 3}
+  - key: sfx.footstep.render.3
+    value: {fileID: 8300000, guid: a93dc700e81984c978dfb80a3b2d397d, type: 3}
+  - key: sfx.footstep.render.4
+    value: {fileID: 8300000, guid: e9a735243ace7456fba5bbfbfa27b2e4, type: 3}
+  - key: sfx.footstep.source.0
+    value: {fileID: 8300000, guid: 712e19e2787d247b1842eba865d5210c, type: 3}
+  - key: sfx.footstep.source.1
+    value: {fileID: 8300000, guid: de03f47ff59e148f99f99205b7feaa71, type: 3}
+  - key: sfx.footstep.source.2
+    value: {fileID: 8300000, guid: 9e668413d73ef428aa0e293a9d22516c, type: 3}
+  - key: sfx.footstep.source.3
+    value: {fileID: 8300000, guid: d4377d5ea6cee4c4b88de546f0c116f4, type: 3}
+  - key: sfx.footstep.source.4
+    value: {fileID: 8300000, guid: 6282a5dc2f96640e7a211ba91b187ebe, type: 3}
+  - key: font.hud
+    value: {fileID: 11400000, guid: 3f9b773d6ac904943b21401bfed09494, type: 2}
+  - key: font.term
+    value: {fileID: 11400000, guid: ffee4f0ba9010402ab8843676702a533, type: 2}
+  - key: font.title
+    value: {fileID: 11400000, guid: ff67d8713beec43bd9433776b092d37a, type: 2}
+  - key: font.symbols
+    value: {fileID: 11400000, guid: 439f638fa9bf341cebb30782a66b3f58, type: 2}
+  - key: model.desk
+    value: {fileID: 6445975995220033621, guid: 0c26903d7adea4dd293b81d1d246c032, type: 3}
+  - key: model.chair
+    value: {fileID: 7699520827786386391, guid: 02e1e17d5eab0404abb0bd6343f9fe00, type: 3}
+  - key: model.monitor
+    value: {fileID: 8371387795494117491, guid: cb324de80f2e4411fba0277bd2df5a65, type: 3}
+  - key: model.serverRack
+    value: {fileID: 6069907384732549552, guid: 16577f3f7d30346f086326798c52bbd4, type: 3}
+  - key: model.plant
+    value: {fileID: 8496883654468225774, guid: 2d170982d6a084902bc9420362fa72e9, type: 3}
+  - key: model.cabinet
+    value: {fileID: 4524455379314657087, guid: 66c4d5b7f77344829867e45832adffc0, type: 3}
+  - key: model.camera
+    value: {fileID: 8128511560879799837, guid: 653064e500ef64a36a2cf6e7814352ca, type: 3}
+  - key: model.drone
+    value: {fileID: 6822518275040292113, guid: be107bd920c1c4d98a7efb5b43723cfb, type: 3}
+  - key: model.ice
+    value: {fileID: 8259953293555217734, guid: 873d7b77956b64f73a951501cc34c690, type: 3}
+  - key: model.terminal
+    value: {fileID: 6954885248084225572, guid: 40a7ed9b5f50142919cef393864bc0c7, type: 3}
+  - key: model.head
+    value: {fileID: 735365434114348076, guid: e26dfd95d57e848ed8f4bec4cb628d11, type: 3}
+  - key: model.vent
+    value: {fileID: 5249010053160886045, guid: 439ca22de8aea44f18d1419fd48e79a1, type: 3}
