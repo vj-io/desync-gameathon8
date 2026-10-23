@@ -1,17 +1,25 @@
 using System;
 using System.Globalization;
 using System.Text;
+#if UNITY_WEBGL && !UNITY_EDITOR
+using System.Runtime.InteropServices;
+#endif
 using Desync.Player;
 using UnityEngine;
 
 namespace Desync.Flow
 {
     /// Testing hook: unityInstance.SendMessage('DesyncDebug','Cmd','room 3'). Kept in release builds.
-    /// Commands: room N (1..6) | flip | god on|off | demo on|off | state | win | tp x y z
+    /// Commands: room N (1..6) | flip | god on|off | demo on|off | state | win | tp x y z | kill ice|melt|trace|glitch
+    /// `state` also hands the JSON to the page (window.__DESYNC__.debug.state()).
     public class DebugBridge : MonoBehaviour
     {
         static DebugBridge I;
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [DllImport("__Internal")] static extern void Desync_PushState(string json);   // Assets/Plugins/WebGL/Desync.jslib
+#endif
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -34,7 +42,8 @@ namespace Desync.Flow
                     case "flip": if (PlayerRef.Exists) PlayerRef.Root.GetComponent<FlipController>().TryFlip(); break;
                     case "god": GameState.God = On(a); break;
                     case "demo": GameState.DemoMode = On(a); break;
-                    case "state": Debug.Log(StateJson()); break;
+                    case "state": PushState(StateJson()); break;
+                    case "kill": Kill(a[1]); break;
                     case "win": if (RoomManager.I) RoomManager.I.OpenExit(); break;
                     case "tp":
                         if (PlayerRef.Exists)
@@ -47,6 +56,37 @@ namespace Desync.Flow
             {
                 Debug.LogWarning("[DESYNC] DesyncDebug: bad arguments in '" + line + "'");
             }
+        }
+
+        static void PushState(string json)
+        {
+            Debug.Log(json);
+#if UNITY_WEBGL && !UNITY_EDITOR
+            Desync_PushState(json);
+#endif
+        }
+
+        /// Kills the player the way the game would, so the recap and the restart path run for real.
+        /// There is no Glitch DeathCause in Core: a glitch kill is an Alarm whose killer id is "GLITCH".
+        static void Kill(string what)
+        {
+            if (!PlayerRef.Exists) { Debug.LogWarning("[DESYNC] DesyncDebug: kill needs a room"); return; }
+            DeathCause cause;
+            string id = null;
+            switch (what.ToLowerInvariant())
+            {
+                case "ice": cause = DeathCause.Ice; id = "ICE-0"; break;
+                case "melt": cause = DeathCause.Melt; break;
+                case "trace": cause = DeathCause.Alarm; break;
+                case "glitch": cause = DeathCause.Alarm; id = "GLITCH"; break;
+                default: Debug.LogWarning("[DESYNC] DesyncDebug: unknown kill cause '" + what + "'"); return;
+            }
+            PlayerRef.LastKillerId = id;
+            if (id != null)
+                PlayerRef.LastKillerPos = id == "ICE-0" && GameState.IceAlive > 0
+                    ? GameState.NearestIce
+                    : PlayerRef.Position + PlayerRef.Root.forward * 1.5f;
+            PlayerRef.Kill(cause);
         }
 
         static bool On(string[] a) => a.Length < 2 || a[1].Equals("on", StringComparison.OrdinalIgnoreCase);

@@ -22,6 +22,7 @@ namespace Desync.Build.Editor
     {
         const string ProbeFolder = "Assets/_BuildProbe";
         const double WebBudgetMB = 35;
+        const string BuildInfoPath = "Assets/Resources/build.txt";
 
         public static void WebRelease() => Run("WebRelease", BuildTarget.WebGL, release: true);
         public static void WebDev() => Run("WebDev", BuildTarget.WebGL, release: false);
@@ -53,6 +54,7 @@ namespace Desync.Build.Editor
                     Debug.LogWarning("[DESYNC] No scenes in Build Settings: building PROBE scene " + scenes[0]);
                 }
 
+                StampBuildInfo();
                 Configure(target, release);
 
                 var outDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "Builds", profile));
@@ -97,6 +99,29 @@ namespace Desync.Build.Editor
                     EditorUserBuildSettings.SwitchActiveBuildTarget(NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(previous)), previous);
             }
             if (failed) EditorApplication.Exit(1);
+        }
+
+        /// Writes Resources/build.txt ("<git short sha> <utc time>") so the player can read it as Desync.Net.BuildInfo. Runs before every player build.
+        public static void StampBuildInfo()
+        {
+            var sha = "nogit";
+            try
+            {
+                var psi = new ProcessStartInfo("git", "rev-parse --short HEAD")
+                {
+                    WorkingDirectory = Application.dataPath, RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                using (var p = Process.Start(psi))
+                {
+                    var o = p.StandardOutput.ReadToEnd().Trim();
+                    p.WaitForExit();
+                    if (p.ExitCode == 0 && o.Length > 0) sha = o;
+                }
+            }
+            catch (Exception e) { Debug.LogWarning("[DESYNC] build info: git unavailable (" + e.Message + ")"); }
+            File.WriteAllText(Path.Combine(Application.dataPath, "Resources", "build.txt"), sha + " " + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + "\n");
+            AssetDatabase.ImportAsset(BuildInfoPath);
+            Debug.Log("[DESYNC] build info stamped: " + sha);
         }
 
         // (a) scenes fresh: Desync.Levels.Editor.LevelBuilder.BuildAll, by reflection (LEVELS owns it; may not exist yet).

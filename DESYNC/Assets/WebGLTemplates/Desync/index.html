@@ -85,6 +85,10 @@
       var stage = $("stage"), canvas = $("unity-canvas"), loading = $("loading"), focusEl = $("focus"), fsBtn = $("fs");
       var focused = false;
 
+      // Test/diagnostic hook. Pollable from the first byte; the game takes it over once running (Desync.Net, Desync.jslib) and adds
+      // debug.kill/cmd/state. Docs: Assets/Plugins/WebGL/Desync.jslib.
+      window.__DESYNC__ = window.__DESYNC__ || { ready: false, state: "loading", metrics: { lastRestartMs: -1, fps: 0 }, run: { room: -1, seed: 0 } };
+
       // Browsers reject requestPointerLock (e.g. Chrome within ~1 s of Esc). Unity's loader treats any unhandled rejection
       // as a fatal error dialog; registered first, this listener swallows only pointer-lock rejections. The game already
       // treats "not locked" as paused and re-requests on the next click.
@@ -93,6 +97,7 @@
       });
 
       function fail(msg) {
+        window.__DESYNC__.state = "error";
         $("pct").textContent = "FAILED TO LOAD";
         $("msg").textContent = String(msg);
         $("bar").style.display = "none";

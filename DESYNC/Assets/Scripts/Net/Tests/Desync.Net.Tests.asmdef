@@ -1,0 +1,10 @@
+{
+  "name": "Desync.Net.Tests",
+  "rootNamespace": "Desync.Net.Tests",
+  "references": ["Desync.Core", "Desync.Rules", "Desync.Net", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}
