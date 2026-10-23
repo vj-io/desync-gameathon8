@@ -1,0 +1,7 @@
+{
+  "name": "Desync.Art.Editor",
+  "rootNamespace": "Desync.Art.Editor",
+  "references": ["Desync.Core", "Desync.Art", "Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Runtime"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

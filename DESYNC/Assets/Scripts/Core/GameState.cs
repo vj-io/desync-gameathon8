@@ -24,5 +24,7 @@ namespace Desync
         public static string InteractPrompt;       // Interactor: non-null while looking at an IInteractable
         public static RoomResult[] Results = new RoomResult[6];   // RoomManager, per room best/last result (UI ending screen)
         public static float Pulse;                 // FlipController/JuiceUtil: 0..1 post-FX pulse
+        public static bool God;                    // DebugBridge "god on": RoomManager ignores PlayerKilled, MeltMeter frozen
+        public static float HijackRemaining;       // HijackedDrone, seconds left while HijackActive (HUD hijack timer)
     }
 }

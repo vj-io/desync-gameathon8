@@ -1,6 +1,6 @@
 {
   "name": "Desync.Player",
   "rootNamespace": "Desync.Player",
-  "references": ["Desync.Core","Unity.InputSystem","PrimeTween.Runtime"],
+  "references": ["Desync.Core","Unity.InputSystem","PrimeTween.Runtime","Unity.RenderPipelines.Universal.Runtime","Unity.RenderPipelines.Core.Runtime"],
   "autoReferenced": true
 }

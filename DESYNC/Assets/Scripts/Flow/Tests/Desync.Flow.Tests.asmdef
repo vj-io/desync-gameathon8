@@ -1,0 +1,10 @@
+{
+  "name": "Desync.Flow.Tests",
+  "rootNamespace": "Desync.Flow.Tests",
+  "references": ["Desync.Core","Desync.Player","Desync.Flow","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}
