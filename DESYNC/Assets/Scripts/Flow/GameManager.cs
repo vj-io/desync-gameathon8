@@ -21,9 +21,6 @@ namespace Desync.Flow
         {
             if (I) return;
             GameInput.Init();
-#if UNITY_WEBGL && !UNITY_EDITOR
-            WebGLInput.captureAllKeyboardInput = true;
-#endif
             var go = new GameObject("GameManager");
             DontDestroyOnLoad(go);
             I = go.AddComponent<GameManager>();

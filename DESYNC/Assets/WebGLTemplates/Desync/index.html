@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <title>DESYNC</title>
+  <meta name="description" content="DESYNC: a first-person stealth-hacker where SPACE flips reality. Break the simulation. ~8 min, 6 rooms.">
+  <link rel="icon" type="image/svg+xml" href="TemplateData/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&amp;display=swap">
+  <style>
+    :root { --chrome: 132px; --green: #3dff9a; --dim: #6c8f7e; --cyan: #35e0ff; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #000; color: var(--dim); overflow: hidden; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; -webkit-user-select: none; user-select: none; }
+    .logo { font-family: Orbitron, "Arial Black", sans-serif; font-weight: 900; letter-spacing: .42em; color: var(--green);
+      text-shadow: 0 0 14px rgba(61, 255, 154, .55), 3px 0 0 rgba(53, 224, 255, .5), -3px 0 0 rgba(255, 60, 120, .45); }
+    header { height: 56px; display: flex; align-items: center; gap: 18px; }
+    header .logo { font-size: 24px; padding-left: .42em; }
+    header .tag { font-size: 12px; letter-spacing: .25em; text-transform: uppercase; }
+    footer { height: 76px; padding: 10px 16px 0; text-align: center; }
+    footer .keys b { color: var(--green); font-weight: 400; }
+    footer .meta { margin-top: 4px; color: var(--cyan); letter-spacing: .12em; }
+
+    html #stage { width: 100%; display: flex; justify-content: center; background: #000; }
+    html #frame { position: relative; background: #000;
+      width: min(100vw, calc((100vh - var(--chrome)) * 16 / 9));
+      width: min(100vw, calc((100dvh - var(--chrome)) * 16 / 9));
+      aspect-ratio: 16 / 9; box-shadow: 0 0 0 1px #12301f, 0 0 40px rgba(61, 255, 154, .08); }
+    html #stage:fullscreen { align-items: center; height: 100%; }
+    html #stage:fullscreen #frame { --chrome: 0px; box-shadow: none; }
+    html #unity-canvas { display: block; width: 100%; height: 100%; background: #000; outline: none; cursor: default; }
+
+    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    html #loading { background: #000; gap: 22px; transition: opacity .4s; }
+    html #loading .logo { font-size: clamp(28px, 6.4cqw, 76px); padding-left: .42em; }
+    html #frame { container-type: inline-size; }
+    html #bar { width: min(420px, 60%); height: 4px; background: #0d1a14; border: 1px solid #1c4130; }
+    html #bar i { display: block; height: 100%; width: 0; background: var(--green); box-shadow: 0 0 10px var(--green); }
+    html #pct { font-family: Orbitron, sans-serif; font-size: 11px; letter-spacing: .3em; }
+    html #msg { color: #ff5577; max-width: 70%; white-space: pre-wrap; }
+    html #focus { pointer-events: none; background: rgba(0, 0, 0, .55); transition: opacity .25s;
+      font: 700 clamp(14px, 2.4cqw, 26px)/1 Orbitron, sans-serif; letter-spacing: .4em; color: var(--green); }
+    html #focus small { margin-top: 14px; font: 12px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .15em; color: var(--dim); }
+    .hide { opacity: 0; visibility: hidden; }
+
+    html #fs { position: absolute; right: 10px; bottom: 10px; z-index: 2; padding: 5px 10px; cursor: pointer;
+      font: 11px Orbitron, sans-serif; letter-spacing: .2em; color: var(--green); background: rgba(0, 0, 0, .6);
+      border: 1px solid #1c4130; opacity: .55; transition: opacity .15s; }
+    html #fs:hover { opacity: 1; border-color: var(--green); }
+    @media (max-width: 700px) { header .tag { display: none; } footer .keys { font-size: 11px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">DESYNC</div>
+    <div class="tag">break the simulation</div>
+  </header>
+
+  <div id="stage">
+    <div id="frame">
+      <canvas id="unity-canvas" width="1280" height="720" tabindex="-1"></canvas>
+      <div id="loading" class="overlay">
+        <div class="logo">DESYNC</div>
+        <div id="bar"><i></i></div>
+        <div id="pct">LOADING 0%</div>
+        <div id="msg"></div>
+      </div>
+      <div id="focus" class="overlay hide">CLICK TO FOCUS<small>mouse + keyboard</small></div>
+      <button id="fs" type="button" tabindex="-1">FULLSCREEN</button>
+    </div>
+  </div>
+
+  <footer>
+    <div class="keys"><b>WASD</b> move &middot; <b>MOUSE</b> look &middot; <b>SPACE</b> flip reality &middot; <b>E</b> hack terminal &middot; <b>ARROWS</b> enter sequence &middot; <b>R</b> restart &middot; <b>ESC</b> pause</div>
+    <div class="meta">~8 min &middot; 6 rooms &middot; headphones recommended</div>
+  </footer>
+
+  <script>
+    (function () {
+      var $ = function (id) { return document.getElementById(id); };
+      var stage = $("stage"), canvas = $("unity-canvas"), loading = $("loading"), focusEl = $("focus"), fsBtn = $("fs");
+      var focused = false;
+
+      function fail(msg) {
+        $("pct").textContent = "FAILED TO LOAD";
+        $("msg").textContent = String(msg);
+        $("bar").style.display = "none";
+        loading.classList.remove("hide");
+      }
+
+      // First click anywhere on the stage: hide the overlay, focus the canvas. The click still reaches Unity (overlay is pointer-events:none).
+      stage.addEventListener("pointerdown", function () {
+        if (focused) return;
+        focused = true;
+        focusEl.classList.add("hide");
+        canvas.focus();
+      }, true);
+
+      // Space / arrows / page keys must not scroll the page or click a focused button.
+      window.addEventListener("keydown", function (e) {
+        if ([" ", "Spacebar", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"].indexOf(e.key) !== -1)
+          e.preventDefault();
+      }, { passive: false });
+      window.addEventListener("keyup", function (e) { if (e.key === " ") e.preventDefault(); }, { passive: false });
+      canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+      // Fullscreen the whole stage (keeps 16:9 letterboxed on 16:10 screens). Unity picks up the new size from the resize event.
+      fsBtn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+      fsBtn.addEventListener("click", function () {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else if (stage.requestFullscreen) stage.requestFullscreen({ navigationUI: "hide" });
+        canvas.focus();
+      });
+      if (!document.fullscreenEnabled) fsBtn.style.display = "none";
+      document.addEventListener("fullscreenchange", function () {
+        window.dispatchEvent(new Event("resize"));
+        setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 120);
+      });
+
+      if (!document.createElement("canvas").getContext("webgl2")) {
+        fail("WebGL2 is required. Use a current desktop Chrome, Edge, Firefox or Safari with hardware acceleration enabled.");
+        return;
+      }
+
+      var buildUrl = "Build";
+      var config = {
+        arguments: [],
+        dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+        frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+#if USE_WASM
+        codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+#endif
+#if SYMBOLS_FILENAME
+        symbolsUrl: buildUrl + "/{{{ SYMBOLS_FILENAME }}}",
+#endif
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+        productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+        productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+        // Render at CSS pixels (not retina 2x): keeps integrated GPUs at 60 fps. Override with ?dpr=2.
+        devicePixelRatio: parseFloat(new URLSearchParams(location.search).get("dpr")) || 1,
+        showBanner: function (msg, type) { (type === "error" ? console.error : type === "warning" ? console.warn : console.log)(msg); }
+      };
+
+      var script = document.createElement("script");
+      script.src = buildUrl + "/{{{ LOADER_FILENAME }}}";
+      script.onerror = function () { fail("Could not download the game loader. Check your connection and reload."); };
+      script.onload = function () {
+        createUnityInstance(canvas, config, function (progress) {
+          var p = Math.round(progress * 100);
+          document.querySelector("#bar i").style.width = p + "%";
+          $("pct").textContent = "LOADING " + p + "%";
+        }).then(function (instance) {
+          window.unityInstance = instance; // tests: unityInstance.SendMessage('DesyncDebug', 'Cmd', 'room 3')
+          document.documentElement.setAttribute("data-unity", "ready");
+          loading.classList.add("hide");
+          if (!focused) focusEl.classList.remove("hide");
+        }).catch(fail);
+      };
+      document.body.appendChild(script);
+    })();
+  </script>
+</body>
+</html>

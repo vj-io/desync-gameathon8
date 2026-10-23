@@ -17,3 +17,4 @@ create.log
 .DS_Store
 node_modules/
 DESYNC/Assets/InitTestScene*
+DESYNC/Assets/Resources/PerformanceTestRun*

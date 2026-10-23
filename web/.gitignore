@@ -1,0 +1,3 @@
+# web/site is the deploy folder: tools/deploy.sh copies Builds/WebRelease into it. Only vercel.json is source.
+site/*
+!site/vercel.json

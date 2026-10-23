@@ -1,0 +1,6 @@
+{
+  "name": "Desync.Build.Editor",
+  "references": [],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}
