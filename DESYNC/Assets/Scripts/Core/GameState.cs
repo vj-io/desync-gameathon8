@@ -37,6 +37,7 @@ namespace Desync
         public static float RoomTDev;              // RoomManager: dev best time for medal thresholds (0 = unknown)
         public static uint Seed;                   // RunManager: current run/room seed
         public static Desync.Rules.Modifiers Mods = Desync.Rules.Modifiers.Default;   // RunManager: active modifiers (read these, not GameConfig, for tunables they cover)
+        public static readonly System.Collections.Generic.HashSet<string> Flags = new System.Collections.Generic.HashSet<string>();   // RunManager: active exploit/mutator flags this room ("flag:cold_boot", "mut:blind_cams"); read once per room
         public static float Pulse;                 // FlipController/JuiceUtil: 0..1 post-FX pulse
         public static bool God;                    // DebugBridge "god on": RoomManager ignores PlayerKilled, MeltMeter frozen
         public static float HijackRemaining;       // HijackedDrone, seconds left while HijackActive (HUD hijack timer)

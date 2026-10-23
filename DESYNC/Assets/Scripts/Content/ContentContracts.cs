@@ -42,7 +42,7 @@ namespace Desync.Content
         public List<Exploit> exploits = new List<Exploit>();
         public List<Mutator> mutators = new List<Mutator>();
         /// Parses {"exploits":[...]} and/or {"mutators":[...]} documents (merge several).
-        public static Catalog FromJson(params string[] jsonDocs) => throw new NotImplementedException();
+        public static Catalog FromJson(params string[] jsonDocs) => ContentImpl.FromJson(jsonDocs);
         public Exploit Exploit(string id) => exploits.Find(e => e.id == id);
     }
 
@@ -53,16 +53,16 @@ namespace Desync.Content
         public const int MaxHeld = 5, MaxDuos = 1;
         /// Unconditional effects folded into Modifiers (add, then mul, then set, then Clamped()); flags collected;
         /// conditional effects (non-null when) returned for the game to evaluate. mode "daily" disables Zero-Day.
-        public static Built Build(IReadOnlyList<Exploit> held, IReadOnlyList<MutatorPick> mutators, Catalog cat, string mode = null) => throw new NotImplementedException();
+        public static Built Build(IReadOnlyList<Exploit> held, IReadOnlyList<MutatorPick> mutators, Catalog cat, string mode = null) => ContentImpl.Build(held, mutators, cat, mode);
         /// Max 5 held, max 1 duo, exclusive groups respected, no duplicates.
-        public static bool CanHold(IReadOnlyList<Exploit> held, Exploit candidate) => throw new NotImplementedException();
+        public static bool CanHold(IReadOnlyList<Exploit> held, Exploit candidate) => ContentImpl.CanHold(held, candidate);
         /// 3 distinct exploits (2 when fewerChoices), >= 2 archetypes, rarity weights C60/R30/E10 (elite 0/70/30),
         /// duos only when both archetypes are held, never one already held or not holdable. Deterministic for a given rng state.
-        public static List<Exploit> RollOffer(Mulberry32 rng, Catalog cat, IReadOnlyList<Exploit> held, bool elite, bool fewerChoices = false) => throw new NotImplementedException();
+        public static List<Exploit> RollOffer(Mulberry32 rng, Catalog cat, IReadOnlyList<Exploit> held, bool elite, bool fewerChoices = false) => ContentImpl.RollOffer(rng, cat, held, elite, fewerChoices);
         /// Total heat of deep-layer picks and conflict errors like "conflict:persistent_melt:cold_boot".
-        public static (int heat, List<string> errors) ValidateHeat(IReadOnlyList<MutatorPick> picks, IReadOnlyList<Exploit> held, Catalog cat) => throw new NotImplementedException();
+        public static (int heat, List<string> errors) ValidateHeat(IReadOnlyList<MutatorPick> picks, IReadOnlyList<Exploit> held, Catalog cat) => ContentImpl.ValidateHeat(picks, held, cat);
         /// Run mutators for a room: count by node (node2: 0-1, node3: 1, node4: 1-2, node5: 2), never two with the same tag.
-        public static List<Mutator> RollRoomMutators(Mulberry32 rng, Catalog cat, int nodeIndex) => throw new NotImplementedException();
+        public static List<Mutator> RollRoomMutators(Mulberry32 rng, Catalog cat, int nodeIndex) => ContentImpl.RollRoomMutators(rng, cat, nodeIndex);
     }
 
     public sealed class Built

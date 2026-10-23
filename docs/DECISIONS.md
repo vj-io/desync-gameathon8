@@ -21,3 +21,7 @@
 **D-010 Dev times filled.** tDev from the shipped build's validator `fastest` times (R1 7.5, R2 17.2, R3 17.5, R4 29.9, R5 26.8, R6 20.5 s) × 1.3 rounded to 0.5 s: 10.0, 22.5, 23.0, 39.0, 35.0, 26.5.
 
 **D-011 Enemy stats by room kind.** The six classic rooms keep their tuned stats (camera 60° × 8 m sweeping ±45° over 3 s, drone 2.5 m/s × 6 m, glitch force-flip after 3 s). Generated BREACH rooms use the spec stats (fixed camera 60° × 12 m; sweep camera 90° arc, 8 s period, 10 m; drone 3 m/s × 10 m; glitch force-flip after 1.0 s with a 0.5 s telegraph) through factory overloads.
+
+**D-012 Deep Layer heat totals 40.** The spec's per-rank heat values sum to 46 while the spec and MUT-01 require 40; trimmed: Hair Trigger 2/4 → 1/2; Expensive Flip, Unstable Reality, Persistent Melt and Auditor Protocol 2 → 1. `ranks[r-1]` is the total heat at rank r. Spec "x → y" changes are stored as additive deltas so effects stack before clamping.
+
+**D-013 Exploit flags.** `Loadout.Build` returns `flags` for behaviour the game implements. The run manager writes them (plus run-mutator flags) into `GameState.Flags` at room start; Player/Flow/Enemies check them once per room (cached), never per frame by string.

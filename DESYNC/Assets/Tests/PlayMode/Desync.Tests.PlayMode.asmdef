@@ -1,0 +1,10 @@
+{
+  "name": "Desync.Tests.PlayMode",
+  "rootNamespace": "Desync.QA",
+  "references": ["Desync.Core","Desync.Rules","Desync.Player","Desync.Flow","Desync.Enemies","Unity.InputSystem","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "includePlatforms": [],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}
