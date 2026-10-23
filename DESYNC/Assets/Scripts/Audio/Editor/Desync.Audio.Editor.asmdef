@@ -1,0 +1,7 @@
+{
+  "name": "Desync.Audio.Editor",
+  "rootNamespace": "Desync.Audio.Editor",
+  "references": ["Desync.Core", "Desync.Audio"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

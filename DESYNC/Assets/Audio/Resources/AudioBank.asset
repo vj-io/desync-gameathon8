@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dabb5ee11f3ea42cb8fcf5d7691203cf, type: 3}
+  m_Name: AudioBank
+  m_EditorClassIdentifier: Desync.Audio::Desync.Audio.AudioBank
+  musicRender: {fileID: 8300000, guid: ea929a63b11594a73aec0233591c3a58, type: 3}
+  musicSource: {fileID: 8300000, guid: 61b7da767e1814cddb21cb0aef60d9cd, type: 3}
+  musicRenderLp: {fileID: 8300000, guid: bbde598c572ae4c91806d1a832b14f30, type: 3}
+  musicSourceLp: {fileID: 8300000, guid: ebe59ed8767db42149539d0691f90af9, type: 3}
+  flipSource: {fileID: 8300000, guid: 4166e8ecab22c41a6813399447e95aad, type: 3}
+  flipRender: {fileID: 8300000, guid: 29a65b407455c4f93a4fca71e0d42e91, type: 3}
+  flipReject: {fileID: 8300000, guid: 6ee3f182442384780a77594391a7b56d, type: 3}
+  cameraTick: {fileID: 8300000, guid: e290a85f6845c43ba9768314370fc27f, type: 3}
+  traceAlarm: {fileID: 8300000, guid: a0a44f867e977413ea668584b5568786, type: 3}
+  iceWindup: {fileID: 8300000, guid: 9cbee6f67a14247eebf5ee34c181a8b6, type: 3}
+  iceShriek: {fileID: 8300000, guid: 787707def5284428b846703ceb7b7946, type: 3}
+  hackTick: {fileID: 8300000, guid: 09cf9fc546f4e444287ea0b5930be320, type: 3}
+  hackWrong: {fileID: 8300000, guid: a3ad946065c354ec284078ab53d7c26f, type: 3}
+  hackStart: {fileID: 8300000, guid: 0a1d307c36eed47f78f1157ecc813f8f, type: 3}
+  hackCancel: {fileID: 8300000, guid: d1d13f6ea5792483bba215dfc4ee4f54, type: 3}
+  accessGranted: {fileID: 8300000, guid: 55607539be7be46b3abc497b887cfcb3, type: 3}
+  heartbeat: {fileID: 8300000, guid: cb85201c6b9be45f39ed57c5927215c1, type: 3}
+  flatline: {fileID: 8300000, guid: 3aadc854de4e543b396ef8f75409170e, type: 3}
+  deathCrunch: {fileID: 8300000, guid: d7aa003d075fd4d12a4ffc8a14838f27, type: 3}
+  roomClear: {fileID: 8300000, guid: 9b132810486ef4f9a830c5268af85473, type: 3}
+  reboot: {fileID: 8300000, guid: fb26b5337e3e24f50b1deaa0672dff23, type: 3}
+  portalOpen: {fileID: 8300000, guid: 9adbd43e39e9e4ecb8971ecbecc31c3e, type: 3}
+  finaleSting: {fileID: 8300000, guid: 657d27ab933f940a086b1b4129d4e71f, type: 3}
+  hijackOn: {fileID: 8300000, guid: 454cba307f6884cfbaab8c6f249d1aea, type: 3}
+  hijackOff: {fileID: 8300000, guid: e2e86bfd26c3e43ba87449b3f056aef5, type: 3}
+  glitchBeep: {fileID: 8300000, guid: 8ee2fb2d67bad443088dc834fbb0322a, type: 3}
+  uiClick: {fileID: 8300000, guid: ad5b884a32eba48fa9ec749604272ec3, type: 3}
+  uiPop: {fileID: 8300000, guid: 05299b7ccaa9b440da7bf3334c1e7f01, type: 3}
+  footstepRender:
+  - {fileID: 8300000, guid: d0311450279864108a2038b79d8c47f7, type: 3}
+  - {fileID: 8300000, guid: ba6f03479ccd24c868435a8e8d183a8c, type: 3}
+  - {fileID: 8300000, guid: 52c33143e227e42f5b5745cb4e5bdcc9, type: 3}
+  - {fileID: 8300000, guid: a93dc700e81984c978dfb80a3b2d397d, type: 3}
+  - {fileID: 8300000, guid: e9a735243ace7456fba5bbfbfa27b2e4, type: 3}
+  footstepSource:
+  - {fileID: 8300000, guid: 712e19e2787d247b1842eba865d5210c, type: 3}
+  - {fileID: 8300000, guid: de03f47ff59e148f99f99205b7feaa71, type: 3}
+  - {fileID: 8300000, guid: 9e668413d73ef428aa0e293a9d22516c, type: 3}
+  - {fileID: 8300000, guid: d4377d5ea6cee4c4b88de546f0c116f4, type: 3}
+  - {fileID: 8300000, guid: 6282a5dc2f96640e7a211ba91b187ebe, type: 3}

@@ -1,0 +1,9 @@
+{
+  "name": "Desync.Audio.PlayTests",
+  "rootNamespace": "Desync.Audio.Tests",
+  "references": ["Desync.Core","Desync.Audio","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}
