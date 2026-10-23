@@ -1,35 +1,49 @@
+using Desync.Rules;
 using UnityEngine;
 
 namespace Desync.Player
 {
-    /// GameState.Melt: rises in SOURCE, drains in RENDER, spikes per flip. At 100 it holds meltDeathDrip s, then kills.
+    /// GameState.Melt through Rules.Melt with GameState.Mods: rises in SOURCE, drains in RENDER, flip cost on every flip
+    /// (FlipController calls OnFlip). At 100 it holds meltDeathDrip s, then kills.
     public class MeltMeter : MonoBehaviour, IResettable
     {
-        bool warn;
+        public const string GlitchKiller = "GLITCH";   // killer id (and DeathCause.Glitch) when a glitch zone's forced flip pushed melt to 100
+
+        bool warn, glitch;
         float hold;
 
         static bool Frozen => GameState.God || GameState.Cinematic || !GameState.Alive;
 
-        void OnEnable() => GameEvents.Flipped += OnFlipped;
         void OnDisable()
         {
-            GameEvents.Flipped -= OnFlipped;
             if (warn) { warn = false; GameEvents.MeltWarning?.Invoke(false); }   // leaving the room ends the heartbeat
         }
 
-        void OnFlipped(bool toSource) { if (!Frozen) Set(GameState.Melt + GameConfig.I.meltFlipSpike); }
+        /// Flip cost. Called by FlipController after GameEvents.Flipped, so listeners there still read the melt from before it.
+        public void OnFlip(bool forced)
+        {
+            if (Frozen) return;
+            float before = GameState.Melt;
+            Set(Melt.Flip(new MeltState(before, Layer.Render), GameState.Mods).Melt);
+            if (forced && before < 100f && GameState.Melt >= 100f) glitch = true;
+        }
 
         void Update()
         {
             if (Frozen) return;
-            var c = GameConfig.I;
             if (GameState.Melt >= 100f)
             {
                 hold += Time.deltaTime;   // post-FX draws the drip while Melt >= 100
-                if (hold >= c.meltDeathDrip) PlayerRef.Kill(DeathCause.Melt);
+                if (hold >= GameConfig.I.meltDeathDrip)
+                {
+                    PlayerRef.LastKillerId = glitch ? GlitchKiller : null;   // GlitchZone left LastKillerPos at its centre
+                    PlayerRef.Kill(glitch ? DeathCause.Glitch : DeathCause.Melt);
+                }
                 return;
             }
-            Set(Step(GameState.Melt, LayerState.InSource, Time.deltaTime, c.meltRiseSource, c.meltDrainRender));
+            glitch = false;
+            var s = new MeltState(GameState.Melt, LayerState.InSource ? Layer.Source : Layer.Render);
+            Set(Melt.Step(s, Time.deltaTime, GameState.Mods).Melt);
         }
 
         /// Pure melt integration step (%/s rates), clamped to 0..100.
@@ -48,6 +62,7 @@ namespace Desync.Player
         public void ResetState()
         {
             hold = 0f;
+            glitch = false;
             Set(0f);
         }
     }

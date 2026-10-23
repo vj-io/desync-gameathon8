@@ -77,6 +77,7 @@ namespace Desync.Flow.Tests
                 Assert.IsTrue(LayerState.InSource);
 
                 PlayerRef.Kill(DeathCause.Ice);
+                GameEvents.RestartRequested?.Invoke();   // skip the death recap
                 Assert.AreEqual(1, rebooting);
                 Assert.IsFalse(GameState.Alive);
                 yield return new WaitForSecondsRealtime(GameConfig.I.restartWipe + 0.15f);
@@ -172,9 +173,9 @@ namespace Desync.Flow.Tests
                 yield return null;
                 GameEvents.ExitReached?.Invoke();
                 Assert.IsTrue(cleared.HasValue);
-                Assert.AreEqual('S', cleared.Value.grade);
-                Assert.AreEqual('S', GameState.Results[0].grade);
-                Assert.AreEqual((int)'S', PlayerPrefs.GetInt("bestG0"), "a clear is saved as the local best");
+                Assert.AreEqual(GameState.Results[0].grade, cleared.Value.grade, "results and room record agree");
+                Assert.IsTrue("SA".IndexOf(cleared.Value.grade) >= 0, "an instant clear grades S or A by score/par");
+                Assert.AreEqual((int)cleared.Value.grade, PlayerPrefs.GetInt("bestG0"), "a clear is saved as the local best");
                 Assert.IsTrue(GameState.Cinematic, "player frozen on the grade card");
             }
             finally

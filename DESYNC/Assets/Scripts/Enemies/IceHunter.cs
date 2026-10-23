@@ -7,21 +7,40 @@ namespace Desync.Enemies
     /// Pooled ICE hunter. SOURCE: NavMeshAgent chase at iceSpeed on the floor-only NavMesh (straight-line chase when it
     /// spawned off the mesh), kills on touch. RENDER: frozen + flickering, harmless, despawns after iceDespawn seconds.
     /// Body-blocked by a hijacked drone. Alive = active hunters across the room (OnEnable/OnDisable).
+    /// Every spawn gets a new id "ICE-<n>" (n counts spawns this attempt). GRAZE: a pass that spends >= GrazeTime in SOURCE
+    /// within GrazeRange of the player without touching raises GameEvents.Grazed(id) when it ends.
     public class IceHunter : MonoBehaviour, IResettable
     {
-        public const float Radius = 0.35f, Repath = 0.2f;
+        public const float Radius = 0.35f, Repath = 0.2f, GrazeRange = 1f, GrazeTime = 0.15f;
         static readonly Vector3 Centre = new Vector3(0f, 0.6f, 0f);
 
         static readonly List<IceHunter> Active = new List<IceHunter>(8);
         public static int Alive => Active.Count;
+
+        static readonly string[] Ids = MakeIds(128);   // built once: no per-spawn strings
+        static int _spawns;
 
         public NavMeshAgent agent;
         public TrailRenderer trail;
         public Transform visual;
         public Renderer[] renderers;
 
-        float _last, _repath, _renderSince = -1f;
+        public string Id { get; private set; } = Ids[0];
+
+        float _last, _repath, _renderSince = -1f, _graze;
         bool _shown = true;
+
+        static string[] MakeIds(int n)
+        {
+            var a = new string[n];
+            for (int i = 0; i < n; i++) a[i] = "ICE-" + i;
+            return a;
+        }
+
+        /// Ids restart at ICE-1 (IceVent calls this on room load and on REBOOT).
+        public static void ResetIds() => _spawns = 0;
+
+        static float Speed => GameConfig.I.iceSpeed * GameState.Mods.IceSpeedMult;
 
         void OnEnable() { Active.Add(this); Publish(); }
         void OnDisable() { Active.Remove(this); GameState.IceAlive = Active.Count; }
@@ -52,10 +71,12 @@ namespace Desync.Enemies
             if (onMesh)
             {
                 agent.Warp(hit.position);
-                agent.speed = GameConfig.I.iceSpeed;
+                agent.speed = Speed;
                 agent.isStopped = false;
             }
             if (trail) trail.Clear();
+            Id = Ids[Mathf.Min(++_spawns, Ids.Length - 1)];
+            _graze = 0f;
             _last = RoomClock.Time;
             _repath = 0f;
             _renderSince = -1f;
@@ -66,6 +87,7 @@ namespace Desync.Enemies
         {
             if (agent && agent.enabled) agent.enabled = false;
             if (trail) trail.Clear();
+            _graze = 0f;
             gameObject.SetActive(false);
         }
 
@@ -76,6 +98,7 @@ namespace Desync.Enemies
 
             if (!LayerState.InSource)
             {
+                EndPass();   // back in RENDER: a near pass that lasted counts as a graze
                 if (_renderSince < 0f) _renderSince = RoomClock.Time;
                 if (chasing) agent.isStopped = true;
                 Show((Time.frameCount & 4) == 0);
@@ -86,7 +109,7 @@ namespace Desync.Enemies
 
             bool frozen = GameState.Cinematic || !GameState.Alive || !PlayerRef.Exists || dt <= 0f;
             if (chasing) agent.isStopped = frozen;
-            if (frozen) return;
+            if (frozen) { if (!GameState.Alive) _graze = 0f; return; }
 
             Vector3 target = PlayerRef.Position;
             if (chasing)
@@ -97,11 +120,26 @@ namespace Desync.Enemies
             else
             {
                 var p = transform.position;
-                transform.position = Vector3.MoveTowards(p, new Vector3(target.x, p.y, target.z), GameConfig.I.iceSpeed * dt);
+                transform.position = Vector3.MoveTowards(p, new Vector3(target.x, p.y, target.z), Speed * dt);
             }
             BodyBlock(chasing);
             if (visual) visual.Rotate(0f, 240f * dt, 0f, Space.Self);
-            if (EnemyKit.TouchesPlayer(transform.position + Centre, Radius)) PlayerRef.Kill(DeathCause.Ice);
+            Vector3 c = transform.position + Centre;
+            if (EnemyKit.TouchesPlayer(c, Radius))
+            {
+                _graze = 0f;   // contact: no graze
+                PlayerRef.LastKillerId = Id;
+                PlayerRef.LastKillerPos = transform.position;
+                PlayerRef.Kill(DeathCause.Ice);
+            }
+            else if (EnemyKit.TouchesPlayer(c, Radius + GrazeRange)) _graze += dt;
+            else EndPass();
+        }
+
+        void EndPass()
+        {
+            if (_graze >= GrazeTime && GameState.Alive) GameEvents.Grazed?.Invoke(Id);
+            _graze = 0f;
         }
 
         void BodyBlock(bool chasing)

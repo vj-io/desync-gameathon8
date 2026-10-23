@@ -14,6 +14,8 @@ namespace Desync.Enemies
         float _t, _last;
         bool _winding;
 
+        void Awake() => IceHunter.ResetIds();   // a freshly loaded room numbers its hunters from ICE-1
+
         void Update()
         {
             IceHunter.Publish();
@@ -47,6 +49,7 @@ namespace Desync.Enemies
 
         public void ResetState()
         {
+            IceHunter.ResetIds();
             _t = 0f;
             _last = 0f;
             _winding = false;

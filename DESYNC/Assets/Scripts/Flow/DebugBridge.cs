@@ -67,7 +67,6 @@ namespace Desync.Flow
         }
 
         /// Kills the player the way the game would, so the recap and the restart path run for real.
-        /// There is no Glitch DeathCause in Core: a glitch kill is an Alarm whose killer id is "GLITCH".
         static void Kill(string what)
         {
             if (!PlayerRef.Exists) { Debug.LogWarning("[DESYNC] DesyncDebug: kill needs a room"); return; }
@@ -78,7 +77,7 @@ namespace Desync.Flow
                 case "ice": cause = DeathCause.Ice; id = "ICE-0"; break;
                 case "melt": cause = DeathCause.Melt; break;
                 case "trace": cause = DeathCause.Alarm; break;
-                case "glitch": cause = DeathCause.Alarm; id = "GLITCH"; break;
+                case "glitch": cause = DeathCause.Glitch; id = "GLITCH"; break;
                 default: Debug.LogWarning("[DESYNC] DesyncDebug: unknown kill cause '" + what + "'"); return;
             }
             PlayerRef.LastKillerId = id;

@@ -60,7 +60,7 @@ namespace Desync.Player
             }
 
             Vector2 mv = moveFrozen ? Vector2.zero : Vector2.ClampMagnitude(GameInput.Move.ReadValue<Vector2>(), 1f);
-            Vector3 target = (transform.right * mv.x + transform.forward * mv.y) * cfg.moveSpeed;
+            Vector3 target = (transform.right * mv.x + transform.forward * mv.y) * (cfg.moveSpeed * GameState.Mods.Clamped().MoveSpeedMult);
             horiz = Vector3.MoveTowards(horiz, target, Accel * dt);
             if (cc.isGrounded && vy < 0f) vy = -2f;
             vy -= Gravity * dt;

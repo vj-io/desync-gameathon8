@@ -31,6 +31,7 @@ namespace Desync.Enemies
                 if (_remaining <= 0f)
                 {
                     _remaining = total;
+                    PlayerRef.LastKillerPos = transform.position;   // MeltMeter names "GLITCH" if this flip melts the player
                     GameEvents.GlitchForcedFlip?.Invoke();
                 }
                 GameState.GlitchCountdown = _remaining;

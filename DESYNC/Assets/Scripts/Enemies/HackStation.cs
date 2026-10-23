@@ -20,6 +20,7 @@ namespace Desync.Enemies
         public string title = "HALCYON//SEC";
 
         protected bool done, hacking;
+        bool _clean;   // no wrong arrow in this attempt
         int[] _seq;
         int _step, _startFrame = -1, _drawKey = int.MinValue;
         float _lockUntil = -1f;
@@ -37,12 +38,16 @@ namespace Desync.Enemies
         public int Step => _step;
         public int Expected(int i) => Seq[i];
 
+        /// Arrows to enter: the station's length plus the run's HackLengthDelta, never fewer than 3.
+        public int SequenceLength => Mathf.Max(3, Length + GameState.Mods.HackLengthDelta);
+
         int[] Seq
         {
             get
             {
-                if (_seq != null && _seq.Length == Length) return _seq;
-                _seq = new int[Length];
+                int n = SequenceLength;
+                if (_seq != null && _seq.Length == n) return _seq;
+                _seq = new int[n];
                 uint s = (uint)seed * 2654435761u + 0x9E3779B9u;
                 for (int i = 0; i < _seq.Length; i++) _seq[i] = (int)(MeshBuilder.Rand(ref s) * 4f) & 3;
                 return _seq;
@@ -53,6 +58,7 @@ namespace Desync.Enemies
         {
             if (!CanInteract) return;
             hacking = true;
+            _clean = true;
             _step = 0;
             _startFrame = Time.frameCount;
             GameState.InHack = true;
@@ -87,9 +93,11 @@ namespace Desync.Enemies
                 hacking = false;
                 done = true;
                 GameState.InHack = false;
+                GameEvents.HackFinished?.Invoke(_clean);   // scored before OnHacked can open the exit
                 OnHacked();
                 return;
             }
+            _clean = false;
             _step = 0;
             _lockUntil = RoomClock.Time + GameConfig.I.terminalWrongLockout;
             GameEvents.HackFailed?.Invoke();

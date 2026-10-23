@@ -20,8 +20,11 @@ namespace Desync.Enemies
 
         static readonly Color Idle = new Color(1f, 0.55f, 0.9f), Seeing = new Color(1f, 0.62f, 0.1f), Blind = new Color(0f, 0.55f, 0.6f);
 
-        float _dwell, _last;
+        float _dwell, _last, _mult = 1f, _spotRange = -1f;
         int _state = -1;
+
+        /// Cameras and drones see CameraRangeMult further (the Architect's gaze is not a camera).
+        float Mult => bothLayers ? 1f : GameState.Mods.CameraRangeMult;
 
         public bool Active => !Suppressed && (bothLayers || Jammer || !LayerState.InSource);
         public float Dwell => _dwell;
@@ -36,10 +39,12 @@ namespace Desync.Enemies
                 if (_dwell <= 0f) GameEvents.Spotted?.Invoke(transform.position);
                 _dwell += dt + 1e-6f;
                 TraceSystem.Seen(PlayerRef.Position);
-                if (_dwell >= GameConfig.I.traceDwell) TraceSystem.Sustain();
+                if (_dwell >= GameState.Mods.Clamped().TraceWindow) TraceSystem.Sustain();
             }
             else _dwell = 0f;
             Show(active, blinded);
+            float mult = Mult;
+            if (mult != _mult) Rescale(mult);
         }
 
         bool CanSeePlayer()
@@ -53,7 +58,7 @@ namespace Desync.Enemies
             if (!target) return false;
             Vector3 eye = transform.position, d = target.position - eye;
             float m = d.magnitude;
-            if (m > range || Vector3.Angle(transform.forward, d) > angle * 0.5f) return false;
+            if (m > range * Mult || Vector3.Angle(transform.forward, d) > angle * 0.5f) return false;
             return m < 1e-3f || !Physics.Raycast(eye, d / m, m, EnemyKit.SightMask, QueryTriggerInteraction.Ignore);
         }
 
@@ -74,6 +79,16 @@ namespace Desync.Enemies
             spot.enabled = s != 0;
             var cfg = GameConfig.I;
             spot.color = s == 2 ? Seeing : s == 3 ? cfg.danger : s == 4 ? Blind : s == 5 ? cfg.cyan : Idle;
+        }
+
+        /// The drawn cone and its light follow the detection range (uniform scale keeps the angle).
+        void Rescale(float mult)
+        {
+            _mult = mult;
+            if (coneRenderer) coneRenderer.transform.localScale = Vector3.one * mult;
+            if (!spot) return;
+            if (_spotRange < 0f) _spotRange = spot.range;   // the factory's range, read before the first change
+            spot.range = _spotRange * mult;
         }
 
         public void ResetState() { _dwell = 0f; _last = 0f; _state = -1; Suppressed = Jammer = false; }

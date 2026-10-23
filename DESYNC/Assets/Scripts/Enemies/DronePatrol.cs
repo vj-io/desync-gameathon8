@@ -20,6 +20,7 @@ namespace Desync.Enemies
         enum Mode { Patrol, Investigate, Hold, Return, Rebooting }
 
         Mode _mode;
+        string _id;
         float _patrolT, _last, _timer, _yaw;
         int _lkpSeen;
         Vector3 _pos, _leave, _target;
@@ -92,7 +93,24 @@ namespace Desync.Enemies
             Visibility(render, render && _mode != Mode.Rebooting);
             if (_mode == Mode.Rebooting && body) body.gameObject.SetActive(render && (Time.frameCount & 4) == 0);
             if (render && _mode != Mode.Rebooting && GameState.Alive && !GameState.Cinematic && EnemyKit.TouchesPlayer(_pos, KillRadius))
+            {
+                PlayerRef.LastKillerId = Id;
+                PlayerRef.LastKillerPos = _pos;
                 PlayerRef.Kill(DeathCause.Drone);
+            }
+        }
+
+        /// "DRONE-<n>", n = 1-based order among the drones under the same parent (LevelBuilder's order). Built on first use.
+        public string Id
+        {
+            get
+            {
+                if (_id != null) return _id;
+                int n = 1;
+                var p = transform.parent;
+                if (p) for (int i = 0, me = transform.GetSiblingIndex(); i < me; i++) if (p.GetChild(i).GetComponent<DronePatrol>()) n++;
+                return _id = "DRONE-" + n;
+            }
         }
 
         void CheckLkp()

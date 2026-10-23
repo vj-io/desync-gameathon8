@@ -1,0 +1,4 @@
+<linker>
+  <!-- SaveV3 and friends are built by reflection (JSON); keep them through IL2CPP code stripping. -->
+  <assembly fullname="Desync.Rules" preserve="all" />
+</linker>

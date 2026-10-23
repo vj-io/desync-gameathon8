@@ -5,12 +5,15 @@ namespace Desync.Player
     /// Space / GlitchForcedFlip toggles RENDER<->SOURCE. Returning to RENDER inside a WallRender volume is rejected.
     public class FlipController : MonoBehaviour
     {
+        MeltMeter melt;
+
+        void Awake() => melt = GetComponent<MeltMeter>();
         void OnEnable() => GameEvents.GlitchForcedFlip += OnForced;
         void OnDisable() => GameEvents.GlitchForcedFlip -= OnForced;
 
         static bool CanFlip => GameState.Alive && !GameState.Paused && !GameState.Cinematic;
 
-        void OnForced() { if (CanFlip) TryFlip(); }
+        void OnForced() { if (CanFlip) TryFlip(true); }
 
         void Update()
         {
@@ -19,15 +22,18 @@ namespace Desync.Player
             if (CanFlip && GameInput.Flip.WasPressedThisFrame()) TryFlip();
         }
 
-        /// No cooldown; allowed mid-hack. Melt spike is applied by MeltMeter on GameEvents.Flipped.
-        public bool TryFlip()
+        /// No cooldown; allowed mid-hack.
+        public bool TryFlip() => TryFlip(false);
+
+        bool TryFlip(bool forced)
         {
             bool toSource = !LayerState.InSource;
             if (!toSource && Blocked()) { GameEvents.FlipRejected?.Invoke(); return false; }
             LayerState.Set(toSource);
             GameState.Flips++;
             GameState.Pulse = 1f;
-            GameEvents.Flipped?.Invoke(toSource);
+            GameEvents.Flipped?.Invoke(toSource);   // listeners read the melt from before the flip cost (REDLINE does)
+            if (melt) melt.OnFlip(forced);
             return true;
         }
 
