@@ -1,6 +1,19 @@
 {
   "name": "Desync.Flow",
   "rootNamespace": "Desync.Flow",
-  "references": ["Desync.Core","Desync.Rules","Desync.Player","Desync.Enemies","Desync.Net","Unity.InputSystem","PrimeTween.Runtime","Unity.RenderPipelines.Universal.Runtime","Unity.RenderPipelines.Core.Runtime","UnityEngine.UI"],
+  "references": [
+    "Desync.Core",
+    "Desync.Rules",
+    "Desync.Player",
+    "Desync.Enemies",
+    "Desync.Net",
+    "Unity.InputSystem",
+    "PrimeTween.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime",
+    "Unity.RenderPipelines.Core.Runtime",
+    "UnityEngine.UI",
+    "Desync.Gen",
+    "Desync.Content"
+  ],
   "autoReferenced": true
 }
