@@ -218,10 +218,14 @@ namespace Desync.Enemies.Tests
             Assert.AreEqual(1, _windup);
             Assert.AreEqual(1, _spawned);
             Assert.AreEqual(1, IceHunter.Alive);
+            Assert.AreEqual(1, GameState.IceAlive);          // published for the spatial ICE hum
+            var hunter = Object.FindAnyObjectByType<IceHunter>();
+            Assert.Less(Vector3.Distance(GameState.NearestIce, hunter.transform.position + Vector3.up * 0.6f), 0.5f);
 
             LayerState.Set(false);                           // back to RENDER: frozen, harmless, gone after iceDespawn
             yield return Run(c.iceDespawn + 0.3f);
             Assert.AreEqual(0, IceHunter.Alive);
+            Assert.AreEqual(0, GameState.IceAlive);
             Assert.IsNull(_killed);
 
             LayerState.Set(true);                            // chase in SOURCE -> kill on touch

@@ -22,6 +22,8 @@ namespace Desync.Levels.Tests
                 Assert.Less(v.peakMelt, 100f, room.name);
             }
             Assert.IsFalse(GridValidator.Validate(RoomLayouts.Rooms[0]).renderOnly, "Room 1 must force a flip");
+            Assert.AreEqual(1, RoomLayouts.Rooms[3].Count(Legend.HijackPad), "Room 4 hijack pad");
+            Assert.AreEqual(1, RoomLayouts.Rooms[4].Count(Legend.HijackPad), "Room 5 hijack pad (PRD 5.4: hijack R4+)");
             Assert.IsEmpty(RoomLayouts.Title.Lint());
             Assert.IsEmpty(RoomLayouts.Ending.Lint());
         }

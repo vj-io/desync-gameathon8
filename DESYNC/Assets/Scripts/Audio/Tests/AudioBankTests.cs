@@ -50,7 +50,7 @@ namespace Desync.Audio.Tests
         [Test]
         public void ContractKeysAreRegistered()
         {
-            foreach (var k in new[] { "music.render", "music.source", "music.render.lp", "music.source.lp", "sfx.flip.source", "sfx.hack.tick", "sfx.heartbeat" })
+            foreach (var k in new[] { "music.render", "music.source", "music.render.lp", "music.source.lp", "sfx.flip.source", "sfx.hack.tick", "sfx.heartbeat", "sfx.ice.hum" })
                 Assert.IsNotNull(AssetLib.Get<AudioClip>(k), k);
         }
     }

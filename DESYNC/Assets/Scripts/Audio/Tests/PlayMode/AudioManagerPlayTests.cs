@@ -18,6 +18,7 @@ namespace Desync.Audio.Tests
         {
             LayerState.Set(false);
             GameState.Melt = 0f; GameState.InHack = false; GameState.Paused = false; GameState.Alive = true; GameState.GlitchCountdown = -1f;
+            GameState.IceAlive = 0;
             if (!UnityEngine.Object.FindAnyObjectByType<AudioListener>()) new GameObject("TestListener").AddComponent<AudioListener>();
             if (!AudioManager.I) new GameObject("AudioManager").AddComponent<AudioManager>();
             m = AudioManager.I;
@@ -32,6 +33,7 @@ namespace Desync.Audio.Tests
         {
             LayerState.Set(false);
             GameState.Melt = 0f; GameState.InHack = false; GameState.Paused = false; GameState.Alive = true;
+            GameState.IceAlive = 0;
         }
 
         float V(int stem) => m.MusicSource(stem).volume;
@@ -122,6 +124,12 @@ namespace Desync.Audio.Tests
         [UnityTest]
         public IEnumerator EventStormNeverExceedsSixteenVoices()
         {
+            // worst case: ICE hum voice running as well (1 heartbeat + 1 hum + 4 music + 5 x 2D + 5 x 3D = 16)
+            GameState.IceAlive = 1;
+            GameState.NearestIce = new Vector3(3f, 0.6f, 2f);
+            LayerState.Set(true);
+            yield return new WaitForSecondsRealtime(0.5f);
+            Assert.IsTrue(m.IceHum.isPlaying, "ICE hum should be running during the storm");
             for (int i = 0; i < 40; i++)
             {
                 var p = new Vector3(i % 7, 0f, i % 5);
@@ -141,7 +149,46 @@ namespace Desync.Audio.Tests
                 Assert.LessOrEqual(m.PlayingVoices(), 16, "voices");
             }
             Assert.Greater(m.PlayingVoices(), 4);
+            Assert.IsTrue(m.IceHum.isPlaying, "ICE hum must survive the storm (own voice, not stolen)");
             GameEvents.MeltWarning?.Invoke(false);
+        }
+
+        [UnityTest]
+        public IEnumerator IceHumIsSpatialFollowsNearestIceInSourceAndFadesOtherwise()
+        {
+            var h = m.IceHum;
+            Assert.IsNotNull(h.clip, "bank.iceHum missing - run AudioSetup.Run");
+            Assert.IsTrue(h.loop);
+            Assert.AreEqual(1f, h.spatialBlend);
+            Assert.AreEqual(AudioRolloffMode.Linear, h.rolloffMode);
+            Assert.AreEqual(2f, h.minDistance);
+            Assert.AreEqual(15f, h.maxDistance);
+
+            GameState.IceAlive = 2;
+            GameState.NearestIce = new Vector3(5f, 0.6f, -4f);
+            yield return new WaitForSecondsRealtime(0.5f);
+            Assert.IsFalse(h.isPlaying, "RENDER: silent");
+
+            LayerState.Set(true);
+            yield return new WaitForSecondsRealtime(0.6f);
+            Assert.IsTrue(h.isPlaying);
+            Assert.Greater(h.volume, 0.3f);
+            Assert.AreEqual(0f, Vector3.Distance(h.transform.position, GameState.NearestIce), 0.001f);
+            GameState.NearestIce = new Vector3(-6f, 0.6f, 1f);
+            yield return null;
+            yield return null;
+            Assert.AreEqual(0f, Vector3.Distance(h.transform.position, GameState.NearestIce), 0.001f, "follows the nearest hunter");
+
+            GameState.IceAlive = 0;
+            yield return new WaitForSecondsRealtime(0.9f);
+            Assert.IsFalse(h.isPlaying, "no hunters: faded out and stopped");
+
+            GameState.IceAlive = 1;
+            yield return new WaitForSecondsRealtime(0.6f);
+            Assert.IsTrue(h.isPlaying);
+            LayerState.Set(false);
+            yield return new WaitForSecondsRealtime(0.9f);
+            Assert.IsFalse(h.isPlaying, "back in RENDER: faded out and stopped");
         }
 
         [UnityTest]
@@ -185,6 +232,8 @@ namespace Desync.Audio.Tests
         [UnityTest]
         public IEnumerator UpdateAndEventPathsAllocateNothing()
         {
+            GameState.IceAlive = 1;                          // ICE hum running (and moving) for the whole measurement
+            LayerState.Set(true);
             using (var rec = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame"))
             {
                 var upd = (Action)Delegate.CreateDelegate(typeof(Action), m, typeof(AudioManager).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance));
@@ -194,6 +243,7 @@ namespace Desync.Audio.Tests
                     {
                         GameState.Melt = 50f + (i % 50);
                         GameState.InHack = (i & 64) != 0;
+                        GameState.NearestIce = Vector3.one * (i % 15);
                         GameState.GlitchCountdown = i % 90 < 60 ? 3f - (i % 60) * 0.05f : -1f;
                         upd();
                         GameEvents.Footstep?.Invoke();
@@ -231,7 +281,7 @@ namespace Desync.Audio.Tests
                 var popt = H<Action<string, Color>>("OnPopText");
                 var parts = new (string name, Action a)[]
                 {
-                    ("Update", () => { for (int i = 0; i < 500; i++) { GameState.Melt = 50f + (i % 50); GameState.InHack = (i & 64) != 0; GameState.GlitchCountdown = i % 90 < 60 ? 3f - (i % 60) * 0.05f : -1f; upd(); } GameState.InHack = false; GameState.GlitchCountdown = -1f; }),
+                    ("Update", () => { for (int i = 0; i < 500; i++) { GameState.Melt = 50f + (i % 50); GameState.InHack = (i & 64) != 0; GameState.NearestIce = Vector3.one * (i % 15); GameState.GlitchCountdown = i % 90 < 60 ? 3f - (i % 60) * 0.05f : -1f; upd(); } GameState.InHack = false; GameState.GlitchCountdown = -1f; }),
                     ("Footstep", () => { for (int i = 0; i < 500; i++) foot(); }),
                     ("HackTick", () => { for (int i = 0; i < 500; i++) tick(i % 5); }),
                     ("CameraTick", () => { for (int i = 0; i < 500; i++) cam(Vector3.one * i); }),

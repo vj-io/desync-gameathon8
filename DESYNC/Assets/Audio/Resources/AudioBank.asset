@@ -23,6 +23,7 @@ MonoBehaviour:
   traceAlarm: {fileID: 8300000, guid: a0a44f867e977413ea668584b5568786, type: 3}
   iceWindup: {fileID: 8300000, guid: 9cbee6f67a14247eebf5ee34c181a8b6, type: 3}
   iceShriek: {fileID: 8300000, guid: 787707def5284428b846703ceb7b7946, type: 3}
+  iceHum: {fileID: 8300000, guid: df645c9184ff14372aada2120f994275, type: 3}
   hackTick: {fileID: 8300000, guid: 09cf9fc546f4e444287ea0b5930be320, type: 3}
   hackWrong: {fileID: 8300000, guid: a3ad946065c354ec284078ab53d7c26f, type: 3}
   hackStart: {fileID: 8300000, guid: 0a1d307c36eed47f78f1157ecc813f8f, type: 3}

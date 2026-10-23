@@ -36,6 +36,7 @@ Kenney licence text (each pack's `License.txt`): "Creative Commons Zero, CC0 ...
 | `trace_alarm.ogg` | synth klaxon (square + saw pulses, echo) |
 | `ice_windup.ogg` | synth saw + noise riser; Kenney Digital `phaserUp5` |
 | `ice_shriek.ogg` | synth FM scream (distorted); Kenney Sci-Fi `explosionCrunch_003`, `laserLarge_002` |
+| `ice_hum.ogg` (4.0 s seamless loop, mono) | Kenney Sci-Fi `spaceEngineLow_000` (tail cross-faded into head, band-passed 60 Hz-1.2 kHz, 7-bit `acrusher` grit, ffmpeg) + synth drone (55/110/330 Hz sines, 100 Hz square buzz, 0.5 Hz phase wobble, 8 Hz tremolo; every frequency a whole number of cycles per loop). Rebuild: `.work/audio/venv/bin/python .work/polish-al/build_ice_hum.py`. Played by `AudioManager` as one looping 3D voice on the nearest live ICE hunter |
 | `hack_tick.ogg` | synth 8-bit square blip (E5), pitched 2^(step/12) at runtime |
 | `hack_wrong.ogg` | synth falling square; Kenney Digital `lowRandom`; Interface `error_004` |
 | `hack_start.ogg`, `hack_cancel.ogg` | Kenney Interface `maximize_004` + `toggle_001`, `minimize_004` + `toggle_002` |

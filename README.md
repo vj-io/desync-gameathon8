@@ -8,7 +8,7 @@ First-person stealth-action intrusion · 7–9 min · 6 rooms · mouse + keyboar
 
 ## Play in browser
 
-[PLAY_URL](PLAY_URL)
+[https://desync-nine.vercel.app](https://desync-nine.vercel.app)
 
 Chrome recommended. Click **CLICK TO JACK IN** on the title screen: the click locks the pointer and starts audio.
 

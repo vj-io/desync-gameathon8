@@ -159,3 +159,5 @@ MonoBehaviour:
     value: {fileID: 735365434114348076, guid: e26dfd95d57e848ed8f4bec4cb628d11, type: 3}
   - key: model.vent
     value: {fileID: 5249010053160886045, guid: 439ca22de8aea44f18d1419fd48e79a1, type: 3}
+  - key: sfx.ice.hum
+    value: {fileID: 8300000, guid: df645c9184ff14372aada2120f994275, type: 3}

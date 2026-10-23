@@ -9,7 +9,9 @@ namespace Desync.Audio
     ///   * "snapshot" = linear crossfade RENDER <-> SOURCE over GameConfig.stemCrossfade (the stems are the same music, so linear).
     ///   * melt low-pass = crossfade towards the .lp stems from 50 % melt (full at 100 %).
     ///   * hack duck = GameConfig.hackDuckDb; pause = music lowered, still playing.
-    /// SFX. Fixed pools, no allocation per call: 6 x 2D + 5 x 3D (linear rolloff 2-15 m) + heartbeat loop + 4 music = 16 voices max.
+    /// SFX. Fixed pools, no allocation per call: 5 x 2D + 5 x 3D (linear rolloff 2-15 m) + heartbeat loop + ICE hum loop + 4 music = 16 voices max.
+    /// ICE hum: one looping 3D voice that follows GameState.NearestIce while GameState.IceAlive > 0 and the player is in SOURCE
+    /// (linear rolloff 2-15 m like the other threat cues), faded in/out; so a live hunter is locatable by ear in first person.
     /// Audio before the first user gesture is silent on the web (browser autoplay policy); nothing here depends on it being audible,
     /// the loop simply starts sounding when the AudioContext resumes (all four stems resume together).
     public sealed class AudioManager : MonoBehaviour
@@ -21,7 +23,8 @@ namespace Desync.Audio
         const float MeltLpStart = 50f;        // % melt where the low-passed stems start to blend in
         const float PausedMusic = 0.35f;
         const float StingMusic = 0.4f;        // music level under the finale sting
-        const int Pool2D = 6, Pool3D = 5;
+        const int Pool2D = 5, Pool3D = 5;
+        const float HumGain = 0.5f, HumIn = 0.25f, HumOut = 0.5f;   // hum level, fade-in / fade-out seconds
         const int DriftSamples = 1500;        // ~31 ms @ 48 kHz: re-sync a stem that drifted from stem 0
         const float MusicWaitMax = 8f;        // start anyway if a stem has not finished loading by then
 
@@ -32,7 +35,7 @@ namespace Desync.Audio
 
         AudioBank _bank;
         readonly AudioSource[] _music = new AudioSource[4];
-        AudioSource _hb;
+        AudioSource _hb, _hum;
         Pool _p2, _p3;
 
         // music state
@@ -45,7 +48,7 @@ namespace Desync.Audio
 
         // sfx state
         bool _hbOn;
-        float _hbVol;
+        float _hbVol, _humVol;
         int _lastStep = -1, _beepId = -1;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -63,9 +66,10 @@ namespace Desync.Audio
         // ---- test / debug hooks
         public bool MusicPlaying => _musicOn;
         public AudioSource MusicSource(int stem) => _music[stem];
+        public AudioSource IceHum => _hum;
         public int PlayingVoices()
         {
-            int n = _hb && _hb.isPlaying ? 1 : 0;
+            int n = (_hb && _hb.isPlaying ? 1 : 0) + (_hum && _hum.isPlaying ? 1 : 0);
             for (int i = 0; i < _music.Length; i++) if (_music[i] && _music[i].isPlaying) n++;
             return n + _p2.Playing() + _p3.Playing();
         }
@@ -97,6 +101,13 @@ namespace Desync.Audio
             _hb = NewSource("heartbeat", false);
             _hb.clip = _bank.heartbeat;
             _hb.loop = true;
+            _hum = NewSource("ice.hum", true);
+            _hum.clip = _bank.iceHum;
+            _hum.loop = true;
+            _hum.rolloffMode = AudioRolloffMode.Linear;
+            _hum.minDistance = 2f;
+            _hum.maxDistance = 15f;
+            _hum.priority = 32;
             _p2 = new Pool(transform, Pool2D, false);
             _p3 = new Pool(transform, Pool3D, true);
 
@@ -200,6 +211,7 @@ namespace Desync.Audio
                 if (_drift >= 1f) { _drift = 0f; CheckDrift(); }
             }
             UpdateHeartbeat(dt);
+            UpdateIceHum(dt);
             UpdateGlitchBeeps();
         }
 
@@ -279,6 +291,20 @@ namespace Desync.Audio
                 _hb.pitch = Mathf.Lerp(1f, 1.75f, k);   // tempo (and pitch) climb with melt
             }
             else if (_hb.isPlaying) _hb.Stop();
+        }
+
+        void UpdateIceHum(float dt)
+        {
+            bool on = GameState.IceAlive > 0 && LayerState.InSource && GameState.Alive && !GameState.Paused && _hum.clip;
+            float target = on ? HumGain : 0f;
+            _humVol = Mathf.MoveTowards(_humVol, target, dt * HumGain / (target > _humVol ? HumIn : HumOut));
+            if (_humVol > 0.001f)
+            {
+                if (!_hum.isPlaying) { _hum.transform.position = GameState.NearestIce; _hum.Play(); }
+                _hum.volume = _humVol;
+            }
+            else if (_hum.isPlaying) _hum.Stop();
+            if (_hum.isPlaying && GameState.IceAlive > 0) _hum.transform.position = GameState.NearestIce;
         }
 
         void UpdateGlitchBeeps()

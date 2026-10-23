@@ -5,6 +5,7 @@ namespace Desync.Enemies
     /// ICE vent: accumulates RoomClock time only while the player is in SOURCE; every iceSpawnInterval
     /// (iceSpawnIntervalTraced during a TRACE) of SOURCE time it winds up for iceWindup (IceWindup + vent glow) and spawns a
     /// pooled hunter (IceSpawned), unless iceMaxAlive hunters are already out. The pool is prewarmed by EnemyFactory.
+    /// Also publishes GameState.IceAlive / NearestIce every frame (IceHunter.Publish) for the spatial ICE hum.
     public class IceVent : MonoBehaviour, IResettable
     {
         public IceHunter[] pool;
@@ -15,6 +16,7 @@ namespace Desync.Enemies
 
         void Update()
         {
+            IceHunter.Publish();
             float dt = EnemyKit.Step(ref _last);
             var c = GameConfig.I;
             bool live = LayerState.InSource && GameState.Alive && !GameState.Cinematic && PlayerRef.Exists;

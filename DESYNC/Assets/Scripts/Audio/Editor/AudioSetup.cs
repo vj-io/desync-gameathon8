@@ -22,7 +22,7 @@ namespace Desync.Audio.Editor
             ("music_render_lp", "musicRenderLp", "music.render.lp"), ("music_source_lp", "musicSourceLp", "music.source.lp"),
             ("flip_source", "flipSource", "sfx.flip.source"), ("flip_render", "flipRender", "sfx.flip.render"), ("flip_reject", "flipReject", "sfx.flip.reject"),
             ("camera_tick", "cameraTick", "sfx.camera.tick"), ("trace_alarm", "traceAlarm", "sfx.alarm"),
-            ("ice_windup", "iceWindup", "sfx.ice.windup"), ("ice_shriek", "iceShriek", "sfx.ice.shriek"),
+            ("ice_windup", "iceWindup", "sfx.ice.windup"), ("ice_shriek", "iceShriek", "sfx.ice.shriek"), ("ice_hum", "iceHum", "sfx.ice.hum"),
             ("hack_tick", "hackTick", "sfx.hack.tick"), ("hack_wrong", "hackWrong", "sfx.hack.wrong"),
             ("hack_start", "hackStart", "sfx.hack.start"), ("hack_cancel", "hackCancel", "sfx.hack.cancel"),
             ("access_granted", "accessGranted", "sfx.access"), ("heartbeat_loop", "heartbeat", "sfx.heartbeat"),
@@ -34,7 +34,7 @@ namespace Desync.Audio.Editor
         };
 
         // spatialised (3D) cues: forced mono so the engine pans them
-        static readonly HashSet<string> Spatial = new HashSet<string> { "camera_tick", "ice_windup", "ice_shriek" };
+        static readonly HashSet<string> Spatial = new HashSet<string> { "camera_tick", "ice_windup", "ice_shriek", "ice_hum" };
 
         public static void Run()
         {

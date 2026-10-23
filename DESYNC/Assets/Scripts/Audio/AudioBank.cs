@@ -14,7 +14,7 @@ namespace Desync.Audio
         public AudioClip flipSource, flipRender, flipReject;
 
         [Header("Threats")]
-        public AudioClip cameraTick, traceAlarm, iceWindup, iceShriek;
+        public AudioClip cameraTick, traceAlarm, iceWindup, iceShriek, iceHum;   // iceHum: seamless loop
 
         [Header("Hacking")]
         public AudioClip hackTick, hackWrong, hackStart, hackCancel, accessGranted;

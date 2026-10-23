@@ -217,6 +217,8 @@ namespace Desync.Levels
 
             // R5 UNSTABLE: cubicle maze with glitch floors that force a flip after 3 s, a drone in the central loop,
             // three cameras and a 90 s TRACE countdown. Scrambled prompts in SOURCE.
+            // The hijack pad (H) sits at the foot of the last cubicle lane, just outside camera 2's reach: hack it, and the
+            // drone orbits you and jams the exit-run cones for 10 s, so the dash to X needs no flip (or the long way round).
             new RoomDef
             {
                 index = 4, name = "UNSTABLE", storyStart = 6, spawnYaw = 90f, traceCountdown = 90f,
@@ -236,7 +238,7 @@ namespace Desync.Levels
                     "#.........d......c...#",
                     "#..##..##..##..##..#.#",
                     "#..##..##..##..##.2#.#",
-                    "#.T..3....V.........X#",
+                    "#.T..3....V...H.....X#",
                     "#.P.........G......K.#",
                     "######################",
                 },
