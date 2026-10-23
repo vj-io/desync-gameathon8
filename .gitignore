@@ -18,3 +18,5 @@ create.log
 node_modules/
 DESYNC/Assets/InitTestScene*
 DESYNC/Assets/Resources/PerformanceTestRun*
+briefs/
+DESYNC_FP_PRD.md
