@@ -1,0 +1,10 @@
+{
+  "name": "Desync.Enemies.PlayTests",
+  "rootNamespace": "Desync.Enemies.Tests",
+  "references": ["Desync.Core","Desync.Enemies","Unity.AI.Navigation","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "includePlatforms": [],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

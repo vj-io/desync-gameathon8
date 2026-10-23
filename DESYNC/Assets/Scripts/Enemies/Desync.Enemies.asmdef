@@ -1,6 +1,6 @@
 {
   "name": "Desync.Enemies",
   "rootNamespace": "Desync.Enemies",
-  "references": ["Desync.Core","Unity.AI.Navigation","Unity.TextMeshPro","PrimeTween.Runtime"],
+  "references": ["Desync.Core","Desync.Art","Unity.InputSystem","Unity.AI.Navigation","Unity.TextMeshPro","PrimeTween.Runtime"],
   "autoReferenced": true
 }

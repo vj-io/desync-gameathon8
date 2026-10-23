@@ -1,0 +1,7 @@
+{
+  "name": "Desync.Enemies.Editor",
+  "rootNamespace": "Desync.Enemies.Editor",
+  "references": ["Desync.Core","Desync.Enemies","Unity.TextMeshPro"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}
