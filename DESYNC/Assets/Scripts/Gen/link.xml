@@ -1,0 +1,4 @@
+<linker>
+  <!-- Chunk JSON is read by reflection (Newtonsoft); keep the generator's data types for IL2CPP stripping. -->
+  <assembly fullname="Desync.Gen" preserve="all" />
+</linker>

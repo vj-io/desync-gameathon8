@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Desync.Rules;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Serialization;
 
 namespace Desync.Gen
 {
@@ -24,9 +28,22 @@ namespace Desync.Gen
     {
         public List<Chunk> chunks = new List<Chunk>();
         /// Parses {"chunks":[...]} (sockets as "wall"|"door"|"source_only").
-        public static ChunkLibrary FromJson(string json) => throw new NotImplementedException();
+        public static ChunkLibrary FromJson(string json) =>
+            JsonConvert.DeserializeObject<ChunkLibrary>(json, JsonSettings) ?? new ChunkLibrary();
         /// Loads and merges every *.json under a folder (tests, editor tools).
-        public static ChunkLibrary FromFolder(string dir) => throw new NotImplementedException();
+        public static ChunkLibrary FromFolder(string dir)
+        {
+            var lib = new ChunkLibrary();
+            var files = Directory.GetFiles(dir, "*.json");
+            Array.Sort(files, StringComparer.Ordinal);   // stable chunk order = deterministic rooms
+            foreach (var f in files) lib.chunks.AddRange(FromJson(File.ReadAllText(f)).chunks);
+            return lib;
+        }
+
+        static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
+        {
+            Converters = { new StringEnumConverter(new SnakeCaseNamingStrategy()) },   // "source_only" <-> SourceOnly
+        };
     }
 
     public enum NodeType { Infil, Elite, Market, Cooldown, Anomaly, Boss }
@@ -86,10 +103,10 @@ namespace Desync.Gen
     public static class Generator
     {
         /// 3 acts; per act 4 rows of 2-3 lane nodes + 1 boss; every node reachable; act 1 node 0 always Infil.
-        public static RunGraph GenerateRun(uint seed, int heat) => throw new NotImplementedException();
+        public static RunGraph GenerateRun(uint seed, int heat) => RunGen.Generate(seed, heat);
         /// Spelunky-style solution path over the act grid (A1 3x3, A2 4x3, A3 4x4), socket matching, threat budget
         /// B = 10 + 6*act + 2*node + heatBonus, mirror p 0.5, validate, reseed up to 20 times, then fall back.
-        public static RoomSpec GenerateRoom(uint seed, int act, int node, int heat, ChunkLibrary lib) => throw new NotImplementedException();
-        public static Validation Validate(RoomSpec room) => throw new NotImplementedException();
+        public static RoomSpec GenerateRoom(uint seed, int act, int node, int heat, ChunkLibrary lib) => RoomGen.Generate(seed, act, node, heat, lib);
+        public static Validation Validate(RoomSpec room) => RoomCheck.Validate(room);
     }
 }
