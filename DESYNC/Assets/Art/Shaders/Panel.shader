@@ -36,7 +36,7 @@ Shader "Desync/Panel"
             #pragma target 3.0
             #pragma vertex Vert
             #pragma fragment Frag
-            #pragma multi_compile _ _SOURCE
+            #pragma dynamic_branch _ _SOURCE
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Fog.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "DesyncCommon.hlsl"
@@ -92,7 +92,8 @@ Shader "Desync/Panel"
                 float2 e = min(uv, 1.0 - uv);
                 float border = 1.0 - smoothstep(0.0, 0.03, min(e.x, e.y));
 
-            #if defined(_SOURCE)
+            if (_SOURCE)   // dynamic branch: one program for both layers, nothing new to compile/link on a flip
+            {
                 float2 cellUV = uv * _CodeGrid.xy;
                 cellUV.y += t * 2.0;
                 float2 cell = floor(cellUV);
@@ -105,7 +106,9 @@ Shader "Desync/Panel"
                            + _SourceColor.rgb * border * 0.6;
                 col *= FogVisibility(i.seedFog.z);
                 return half4(col, 1.0);
-            #else
+            }
+            else
+            {
                 float scan = 0.88 + 0.12 * sin(uv.y * 360.0 - t * 4.0);
                 float sweepPos = frac(t * 0.15 + seed.x) * 1.6 - 0.3;   // diagonal sheen crossing the poster
                 float sweep = (1.0 - smoothstep(0.0, 0.06, abs((uv.x + uv.y) * 0.5 - sweepPos))) * 0.25;
@@ -124,7 +127,7 @@ Shader "Desync/Panel"
 
                 float3 col = lerp(poster, screen, saturate(_Mode));
                 return half4(MixFog(col, i.seedFog.z), 1.0);
-            #endif
+            }
             }
             ENDHLSL
         }

@@ -32,6 +32,114 @@ namespace Desync.Art.Editor
 
         public static void RunPreviewOnly() => Preview();
 
+        /// Follow-up probes: model reimport, _SOURCE variants on Metal + GLES3 and their first frame, handler allocations.
+        public static void RunProbes()
+        {
+            int fails = ReimportModels() + CheckSourceFirstFrame() + CheckAllocs() + CheckModels();
+            Debug.Log(fails == 0 ? "[DESYNC] ArtProbes passed" : $"[DESYNC] ArtProbes FAILED ({fails})");
+        }
+
+        static int ReimportModels()
+        {
+            var guids = AssetDatabase.FindAssets("t:Model", new[] { "Assets/ThirdParty/Models" });
+            foreach (var g in guids) AssetDatabase.ImportAsset(AssetDatabase.GUIDToAssetPath(g), ImportAssetOptions.ForceUpdate);
+            Debug.Log($"[DESYNC] reimported {guids.Length} models under Assets/ThirdParty/Models");
+            return 0;
+        }
+
+        /// The _SOURCE variants of the opaque shaders must compile for Metal (editor) and GLES3 (WebGL), and the very first
+        /// frame drawn with the keyword on and the blend switch NOT run must not be the magenta error shader.
+        static int CheckSourceFirstFrame()
+        {
+            int fails = 0;
+            foreach (var name in new[] { "Desync/World", "Desync/Panel" })
+            {
+                var pass = ShaderUtil.GetShaderData(Shader.Find(name)).GetSubshader(0).GetPass(0);
+                foreach (var plat in new[] { (ShaderCompilerPlatform.Metal, BuildTarget.StandaloneOSX), (ShaderCompilerPlatform.GLES3x, BuildTarget.WebGL) })
+                    foreach (var kw in new[] { new[] { "_SOURCE" }, new[] { "_SOURCE", "FOG_LINEAR" }, new[] { "_SOURCE", "FOG_LINEAR", "_CLUSTER_LIGHT_LOOP" } })
+                        foreach (var stage in new[] { ShaderType.Vertex, ShaderType.Fragment })
+                        {
+                            var r = pass.CompileVariant(stage, kw, plat.Item1, plat.Item2);
+                            if (r.Success) continue;
+                            fails++;
+                            foreach (var m in r.Messages) Debug.LogError($"[DESYNC] {plat.Item1} {name} {stage} [{string.Join(",", kw)}]: {m.message}");
+                        }
+                Debug.Log($"[DESYNC] {name} _SOURCE variants compile on Metal + GLES3: {(fails == 0 ? "ok" : "FAILED")}");
+            }
+
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var cam = new GameObject("Cam").AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+            foreach (var key in new[] { "mat.world", "mat.poster" })
+            {
+                var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                q.GetComponent<Renderer>().sharedMaterial = AssetLib.Get<Material>(key);
+                q.transform.position = new Vector3(key == "mat.world" ? -0.6f : 0.6f, 0f, 2f);
+            }
+            Shader.EnableKeyword(LayerState.Keyword);   // keyword only: no SetWorldBlend, materials stay opaque
+            var first = Probe(cam);
+            var second = Probe(cam);
+            Shader.DisableKeyword(LayerState.Keyword);
+            for (int i = 0; i < 2; i++)
+            {
+                bool magentaFirst = IsMagenta(first[i]), magentaSecond = IsMagenta(second[i]);
+                Debug.Log($"[DESYNC] _SOURCE opaque first frame {(i == 0 ? "mat.world" : "mat.poster")}: first={first[i]} second={second[i]}");
+                if (magentaFirst || magentaSecond) { fails++; Debug.LogError("[DESYNC] _SOURCE frame rendered with the error shader"); }
+            }
+            return fails;
+        }
+
+        static bool IsMagenta(Color c) => c.r > 0.9f && c.g < 0.1f && c.b > 0.9f;
+
+        static Color[] Probe(Camera cam)
+        {
+            var rt = RenderTexture.GetTemporary(256, 128, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            cam.targetTexture = rt;
+            cam.Render();
+            RenderTexture.active = rt;
+            var tex = new Texture2D(256, 128, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, 256, 128), 0, 0);
+            RenderTexture.active = null;
+            cam.targetTexture = null;
+            RenderTexture.ReleaseTemporary(rt);
+            // brightest pixel inside each quad's screen area (glyphs/edges vary; magenta is uniform)
+            var res = new Color[2];
+            for (int side = 0; side < 2; side++)
+            {
+                int x = side == 0 ? 80 : 176;
+                res[side] = tex.GetPixel(x, 64);
+            }
+            Object.DestroyImmediate(tex);
+            return res;
+        }
+
+        /// Bytes allocated per call by the ART handlers that run on GameEvents.Flipped / LayerState.Changed, and by Update.
+        static int CheckAllocs()
+        {
+            const System.Reflection.BindingFlags F = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var go = new GameObject("allocProbe");
+            var fx = go.AddComponent<PostFXController>();
+            var mats = new Material[PostFXController.SourceTransparentKeys.Length];
+            for (int i = 0; i < mats.Length; i++) mats[i] = AssetLib.Get<Material>(PostFXController.SourceTransparentKeys[i]);
+            typeof(PostFXController).GetField("_mats", F).SetValue(fx, mats);
+            var onLayer = (System.Action<bool>)System.Delegate.CreateDelegate(typeof(System.Action<bool>), fx, typeof(PostFXController).GetMethod("OnLayer", F));
+            var onFlip = (System.Action<bool>)System.Delegate.CreateDelegate(typeof(System.Action<bool>), fx, typeof(PostFXController).GetMethod("OnFlipped", F));
+            var update = (System.Action)System.Delegate.CreateDelegate(typeof(System.Action), fx, typeof(PostFXController).GetMethod("Update", F));
+            var rain = GlyphRain.Attach(new GameObject("cam").AddComponent<Camera>());
+            var rainLayer = (System.Action<bool>)System.Delegate.CreateDelegate(typeof(System.Action<bool>), rain, typeof(GlyphRain).GetMethod("OnLayer", F));
+
+            void Round() { onFlip(true); onLayer(true); rainLayer(true); update(); onFlip(false); onLayer(false); rainLayer(false); update(); }
+            Round(); Round();   // warm-up (JIT, first-use caches)
+            long before = System.GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 20; i++) Round();
+            long perFlip = (System.GC.GetAllocatedBytesForCurrentThread() - before) / 40;
+            PostFXController.SetWorldBlend(mats, false);
+            Object.DestroyImmediate(go);
+            Debug.Log($"[DESYNC] ART alloc per flip (Flipped + LayerState.Changed handlers + one Update): {perFlip} bytes");
+            return perFlip > 0 ? 1 : 0;
+        }
+
         // ---------------------------------------------------------------------------------------------------------
         static int CheckMeshPrep()
         {

@@ -89,10 +89,10 @@ namespace Desync.Art
             if (!_ps) return;
             if (source)
             {
-                _ps.Play();
-                _ps.Emit(140);   // fill the volume at once instead of waiting for the first streaks to fall in
+                _ps.Play(false);   // no children: skips the hierarchy walk
+                _ps.Emit(140);     // fill the volume at once instead of waiting for the first streaks to fall in
             }
-            else _ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            else _ps.Stop(false, ParticleSystemStopBehavior.StopEmittingAndClear);
         }
 
         // Follow the camera's position but stay world-aligned so the emitter box never tilts with the view.

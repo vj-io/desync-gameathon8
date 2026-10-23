@@ -1,6 +1,6 @@
 // WorldMat: every room surface and prop (mat.world) and floors (mat.floor, grid on).
 // RENDER: flat vertex colour + half-lambert + spot pools, glowing cyan->magenta outline edges (quad diagonals suppressed), navy fog.
-// SOURCE (global keyword _SOURCE): green full wireframe + world-space glyph columns scrolling down, faint fill.
+// SOURCE (global keyword _SOURCE, dynamic branch): green full wireframe + world-space glyph columns scrolling down, faint fill.
 // SOURCE transparency is a blend-state change the keyword cannot make: PostFXController.SetWorldBlend switches
 // _SrcBlend/_DstBlend/_ZWrite/_Cull/renderQueue on the shared materials (additive, no depth write, both faces) on LayerState.Changed.
 Shader "Desync/World"
@@ -41,7 +41,7 @@ Shader "Desync/World"
             #pragma target 3.0
             #pragma vertex Vert
             #pragma fragment Frag
-            #pragma multi_compile _ _SOURCE
+            #pragma dynamic_branch _ _SOURCE
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Fog.hlsl"
@@ -128,7 +128,8 @@ Shader "Desync/World"
                 float wave = FlipWave(i.positionWS);
                 float grid = (GridLines(i.positionWS.xz, _Grid.x) * 0.45 + GridLines(i.positionWS.xz, _Grid.x * _Grid.y)) * _Grid.z;
 
-            #if defined(_SOURCE)
+            if (_SOURCE)   // dynamic branch: one program for both layers, nothing new to compile/link on a flip
+            {
                 float outline = EdgeCore(EdgePixels(clean), _EdgeWidth) * valid;
                 float diag = EdgeCore(EdgePixels(raw), _EdgeWidth * 0.8) * valid;
                 float wire = max(outline, diag * _SourceMix.w);
@@ -159,7 +160,9 @@ Shader "Desync/World"
                     + (wire * _SourceMix.y + halo * 0.1 + grid * 0.3) * sqrt(vis)
                     + wave * (0.25 + wire + 0.5 * glyph));
                 return half4(col, 1.0);
-            #else
+            }
+            else
+            {
                 // Flat-shaded vertex colour (main light direction only, so the look survives any light setup).
                 float hl = dot(n, _MainLightPosition.xyz) * 0.5 + 0.5;
                 half3 vc = i.color.rgb;
@@ -190,7 +193,7 @@ Shader "Desync/World"
 
                 float3 col = MixFog(base, i.fogFactor) + glow * sqrt(vis);
                 return half4(col, 1.0);
-            #endif
+            }
             }
             ENDHLSL
         }
