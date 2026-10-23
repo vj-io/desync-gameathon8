@@ -63,6 +63,14 @@ namespace Desync
         public static Action FinaleStarted;                 // Room 6 after third shield terminal
         public static Action GameCompleted;                 // "SIMULATION: COMPROMISED"
 
+        // UI -> Flow requests (UI never references Flow directly)
+        public static Action<int> StartRequested;           // title click / level select: lock pointer + load room index
+        public static Action ResumeRequested;               // pause menu resume / click-to-resume
+        public static Action RestartRequested;              // pause menu restart room
+        public static Action QuitRequested;                 // pause menu quit to title
+        public static Action<bool> LevelSelectToggled;      // F2 panel shown/hidden (Flow raises on F2)
+        public static Action SettingsChanged;               // Settings.* written; Flow applies render scale etc.
+
         // Juice requests (any system may raise; JuiceUtil executes, honouring Settings)
         public static Action<float> ShakeRequest;           // strength 0..1
         public static Action<float> HitStopRequest;         // seconds (unscaled)

@@ -29,6 +29,6 @@ case $mode in
   *) echo "unknown mode $mode"; exit 2 ;;
 esac
 "$UNITY" "${args[@]}"; code=$?
-grep -v "Start importing" "$log" | grep -E "error CS[0-9]+|warning CS0(108|114|618)|Exception:|executeMethod|\[DESYNC\]|Build (succeeded|failed)|Tests? (passed|failed)" | grep -v Licensing | sort -u | head -80
+grep -v "Start importing" "$log" | grep -E "error CS[0-9]+|Shader error|Shader warning in|warning CS0(108|114|618)|Exception:|executeMethod|\[DESYNC\]|Build (succeeded|failed)|Tests? (passed|failed)" | grep -v Licensing | sort -u | head -80
 echo "[unity.sh] exit=$code log=$log"
 exit $code
