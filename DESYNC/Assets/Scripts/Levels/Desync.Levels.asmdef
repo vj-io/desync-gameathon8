@@ -1,0 +1,6 @@
+{
+  "name": "Desync.Levels",
+  "rootNamespace": "Desync.Levels",
+  "references": ["Desync.Core"],
+  "autoReferenced": true
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Desync.Flow",
+  "rootNamespace": "Desync.Flow",
+  "references": ["Desync.Core","Unity.InputSystem","PrimeTween.Runtime"],
+  "autoReferenced": true
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Desync.Art",
+  "rootNamespace": "Desync.Art",
+  "references": ["Desync.Core","Unity.RenderPipelines.Universal.Runtime","Unity.RenderPipelines.Core.Runtime","PrimeTween.Runtime"],
+  "autoReferenced": true
+}

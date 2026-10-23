@@ -1,0 +1,6 @@
+{
+  "name": "Desync.Audio",
+  "rootNamespace": "Desync.Audio",
+  "references": ["Desync.Core","PrimeTween.Runtime"],
+  "autoReferenced": true
+}

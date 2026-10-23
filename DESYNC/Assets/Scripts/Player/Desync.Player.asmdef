@@ -1,0 +1,6 @@
+{
+  "name": "Desync.Player",
+  "rootNamespace": "Desync.Player",
+  "references": ["Desync.Core","Unity.InputSystem","PrimeTween.Runtime"],
+  "autoReferenced": true
+}
