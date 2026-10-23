@@ -107,6 +107,8 @@ namespace Desync
         public static Action ContinueRequested;             // UI -> Flow: leave results, go to next room/node
         public static Action<string> CopyRequested;         // UI -> Net: copy text to clipboard
         public static Action<string> Hint;                  // Flow: contextual hint after 3 deaths in a room
+        public static Action<string> Grazed;                // IceHunter: id of the ICE that grazed the player (>= 0.15 s within graze radius in SOURCE, no contact)
+        public static Action<bool> HackFinished;            // HackStation: true = perfect (no wrong arrow) — raised for terminals AND hijack pads
 
         // Juice requests (any system may raise; JuiceUtil executes, honouring Settings)
         public static Action<float> ShakeRequest;           // strength 0..1

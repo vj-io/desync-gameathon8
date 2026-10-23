@@ -27,6 +27,9 @@ namespace Desync
         public static RoomResult[] Results = new RoomResult[6];   // RoomManager, per room best/last result (UI ending screen)
         public static int IceAlive;                // IceVent/IceHunter: live hunters this frame
         public static Vector3 NearestIce;          // IceHunter: position of the hunter nearest the player (valid when IceAlive > 0)
+        public enum PhaseKind { Title, Playing, Paused, Recap, Results, Ending }
+        public static PhaseKind Phase;             // GameManager/RoomManager: what the player is looking at (web hook, analytics)
+        public static float LastRestartMs = -1f;   // RoomManager: input (R / recap end) -> control returned, unscaled ms
         public static int Score;                   // ScoreKeeper: current room score (events, multiplied)
         public static int Chain;                   // ScoreKeeper: GHOST chain
         public static float Multiplier = 1f;       // ScoreKeeper: 1 + 0.25*chain (capped)
