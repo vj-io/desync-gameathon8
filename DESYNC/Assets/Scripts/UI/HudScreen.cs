@@ -13,9 +13,31 @@ namespace Desync.UI
         // ---- layer tag
         GlitchLabel _layer; TMP_Text _layerSub; bool _shownSource; Tween _layerTw; float _rejectT;
         // ---- left block
-        TMP_Text _room, _time, _term, _traces, _exit; Tween _exitTw, _termTw;
+        TMP_Text _room, _timer, _term, _traces, _exit; Tween _exitTw, _termTw;
         string[] _roomCodes, _pipStr, _bannerPips; int _traceMax;
-        int _ri = -99, _lastTenth = -1, _td = -1, _tt = -1, _tc = -1; float _par; bool _overPar, _exitOpen;
+        int _ri = -99, _cs = -1, _td = -1, _tt = -1, _tc = -1; bool _exitOpen;
+        readonly char[] _clock = new char[8];
+        // ---- medal ticks (under the timer)
+        GameObject _medalGo; TMP_Text _medalNext; Image _medalFill; Image[] _medalTicks; string[] _medalLabels = new string[5];
+        float _tDev = -1f; int _medal = -1;
+        // ---- score block (top-right)
+        TMP_Text _score, _mult, _ghost; RectTransform _multRt; int _scoreShown = -1, _mult100 = -1, _chain = -1; float _multPulse;
+        sealed class ScorePopUI { public RectTransform Rt; public TMP_Text Pts, Label; public CanvasGroup G; public float Age, Off, TargetOff; public bool On; }
+        ScorePopUI[] _spops;
+        static readonly string[] EventLabels = Spaced(System.Enum.GetNames(typeof(Desync.Rules.EventType)));   // "CleanFlip" -> "CLEAN FLIP"
+        static string[] Spaced(string[] a)
+        {
+            for (int i = 0; i < a.Length; i++)
+            {
+                var sb = new StringBuilder();
+                for (int k = 0; k < a[i].Length; k++) { if (k > 0 && char.IsUpper(a[i][k])) sb.Append(' '); sb.Append(char.ToUpperInvariant(a[i][k])); }
+                a[i] = sb.ToString();
+            }
+            return a;
+        }
+        // ---- redline callout + hint
+        GameObject _redGo; TMP_Text _red; bool _redOn;
+        GameObject _hintGo; CanvasGroup _hintGroup; TMP_Text _hint; string _pendingHint; float _hintT;
         // ---- trace banner + edge
         RectTransform _traceRt; CanvasGroup _traceGroup; TMP_Text _traceText, _tracePips; Image _edge; Tween _traceTw;
         bool _traceOn; int _trLast = -1; float _edgeA;
@@ -30,8 +52,6 @@ namespace Desync.UI
         Image _dot; RectTransform _keyRt; TMP_Text _prompt; string _promptSrc; Tween _keyTw;
         // ---- hack hint
         GameObject _hackGo; bool _inHack; Tween _hackTw; RectTransform _hackRt;
-        // ---- combo
-        GlitchLabel _combo; CanvasGroup _comboGroup; RectTransform _comboRt; Tween _comboTw, _comboFade;
         // ---- story typewriter
         TMP_Text _story; CanvasGroup _storyGroup; Tween _storyFade; int _storyState, _storyShown, _storyLen; float _storyChars, _storyHold;
         // ---- pops
@@ -44,7 +64,7 @@ namespace Desync.UI
         // ---- control card
         CanvasGroup _cardGroup; RectTransform[] _chips; float _cardT; int _cardState; Tween _cardFade;
 
-        const float Cps = 64f;
+        const float Cps = 64f, MeltShakeAt = 90f, MultPulse = 0.12f, PopLife = 0.9f, HintLife = 4f;
 
         protected override void Create()
         {
@@ -80,18 +100,21 @@ namespace Desync.UI
 
             // ---- left block (top-left)
             var lb = UIKit.Img(Root, "Left", new Color(UIKit.Panel.r, UIKit.Panel.g, UIKit.Panel.b, 0.6f));
-            UIKit.Place(lb.rectTransform, Anc.TL, new Vector2(32, -28), new Vector2(560, 196));
-            var bar = UIKit.Img(lb.transform, "Accent", cyan); UIKit.Place(bar.rectTransform, Anc.TL, Vector2.zero, new Vector2(5, 196));
+            UIKit.Place(lb.rectTransform, Anc.TL, new Vector2(32, -28), new Vector2(560, 236));
+            var bar = UIKit.Img(lb.transform, "Accent", cyan); UIKit.Place(bar.rectTransform, Anc.TL, Vector2.zero, new Vector2(5, 236));
             _room = UIKit.Text(lb.transform, "Room", hud, 44, paper, TextAlignmentOptions.Left, "R-- · ---"); _room.fontStyle = FontStyles.Bold;
             UIKit.Place(_room.rectTransform, Anc.TL, new Vector2(24, -10), new Vector2(520, 54));
-            _time = UIKit.Text(lb.transform, "Time", hud, 28, paper, TextAlignmentOptions.Left, "TIME 0.0  PAR 0s");
-            UIKit.Place(_time.rectTransform, Anc.TL, new Vector2(24, -70), new Vector2(520, 34));
+            _timer = UIKit.Text(lb.transform, "Timer", hud, 40, paper, TextAlignmentOptions.Left, "00:00.00"); _timer.fontStyle = FontStyles.Bold;
+            UIKit.Place(_timer.rectTransform, Anc.TL, new Vector2(24, -62), new Vector2(520, 46));
+            BuildMedalRow(lb.transform);
             _term = UIKit.Text(lb.transform, "Terminals", hud, 28, paper, TextAlignmentOptions.Left, "TERMINALS 0/0");
-            UIKit.Place(_term.rectTransform, Anc.TL, new Vector2(24, -108), new Vector2(380, 34));
+            UIKit.Place(_term.rectTransform, Anc.TL, new Vector2(24, -146), new Vector2(380, 34));
             _exit = UIKit.Text(lb.transform, "ExitOpen", hud, 28, UIKit.Green, TextAlignmentOptions.Left, "EXIT OPEN ►"); _exit.fontStyle = FontStyles.Bold;
-            UIKit.Place(_exit.rectTransform, Anc.TL, new Vector2(330, -108), new Vector2(220, 34)); _exit.gameObject.SetActive(false);
+            UIKit.Place(_exit.rectTransform, Anc.TL, new Vector2(330, -146), new Vector2(220, 34)); _exit.gameObject.SetActive(false);
             _traces = UIKit.Text(lb.transform, "Traces", hud, 28, paper, TextAlignmentOptions.Left, _pipStr[0]);
-            UIKit.Place(_traces.rectTransform, Anc.TL, new Vector2(24, -146), new Vector2(520, 34));
+            UIKit.Place(_traces.rectTransform, Anc.TL, new Vector2(24, -184), new Vector2(520, 34));
+
+            BuildScoreBlock();
 
             // ---- trace banner (under the layer tag)
             var tb = UIKit.Img(Root, "TraceBanner", new Color(danger.r * 0.35f, 0f, 0.02f, 0.88f));
@@ -106,14 +129,14 @@ namespace Desync.UI
             UIKit.Place(_tracePips.rectTransform, Anc.R, new Vector2(-18, 0), new Vector2(150, 60));
             tb.gameObject.SetActive(false);
 
-            // ---- top-right stack: demo / hijack / lockdown
+            // ---- top-right stack (under the score block): demo / hijack / lockdown
             var demo = UIKit.Box(Root, "Demo", cyan, 0.7f);
-            UIKit.Place(demo.rectTransform, Anc.TR, new Vector2(-32, -28), new Vector2(380, 44)); _demo = demo.gameObject;
+            UIKit.Place(demo.rectTransform, Anc.TR, new Vector2(-32, -262), new Vector2(380, 44)); _demo = demo.gameObject;
             _demoText = UIKit.Text(demo.transform, "Label", hud, 24, cyan, TextAlignmentOptions.Center, "DEMO MODE · TRACE-FREE"); UIKit.Stretch(_demoText.rectTransform);
             _demo.SetActive(false);
 
             var hj = UIKit.Box(Root, "Hijack", cyan, 0.75f);
-            UIKit.Place(hj.rectTransform, Anc.TR, new Vector2(-32, -84), new Vector2(380, 66)); _hjGo = hj.gameObject;
+            UIKit.Place(hj.rectTransform, Anc.TR, new Vector2(-32, -318), new Vector2(380, 66)); _hjGo = hj.gameObject;
             _hjText = UIKit.Text(hj.transform, "Label", hud, 30, cyan, TextAlignmentOptions.Left, "HIJACK 10.0s"); _hjText.fontStyle = FontStyles.Bold;
             UIKit.Place(_hjText.rectTransform, Anc.TL, new Vector2(16, -6), new Vector2(350, 36));
             var hjb = UIKit.Img(hj.transform, "BarBg", new Color(1, 1, 1, 0.12f)); UIKit.Place(hjb.rectTransform, Anc.BL, new Vector2(16, 10), new Vector2(348, 8));
@@ -121,7 +144,7 @@ namespace Desync.UI
             _hjGo.SetActive(false);
 
             var lk = UIKit.Box(Root, "Lockdown", danger, 0.75f);
-            _lockRt = UIKit.Place(lk.rectTransform, Anc.TR, new Vector2(-32, -160), new Vector2(380, 56)); _lockGo = lk.gameObject;
+            _lockRt = UIKit.Place(lk.rectTransform, Anc.TR, new Vector2(-32, -394), new Vector2(380, 56)); _lockGo = lk.gameObject;
             _lock = UIKit.Text(lk.transform, "Label", hud, 30, paper, TextAlignmentOptions.Center, "LOCKDOWN 90s"); _lock.fontStyle = FontStyles.Bold; UIKit.Stretch(_lock.rectTransform);
             _lockGo.SetActive(false);
 
@@ -159,6 +182,18 @@ namespace Desync.UI
             UIKit.Place(_melt.rectTransform, Anc.BL, new Vector2(0, 26), new Vector2(460, 46));
             var mbg = UIKit.Img(mb, "BarBg", new Color(1, 1, 1, 0.14f)); UIKit.Place(mbg.rectTransform, Anc.BL, new Vector2(0, 8), new Vector2(380, 10));
             _meltFill = UIKit.Img(mbg.transform, "Fill", cyan); UIKit.Stretch(_meltFill.rectTransform); _meltFill.type = Image.Type.Filled; _meltFill.fillMethod = Image.FillMethod.Horizontal; _meltFill.fillAmount = 0f;
+            for (int i = 0; i < 2; i++)   // 75 / 90 ticks
+            {
+                var tk = UIKit.Img(mbg.transform, "Tick" + (i == 0 ? 75 : 90), i == 0 ? new Color(magenta.r, magenta.g, magenta.b, 0.9f) : danger);
+                UIKit.Place(tk.rectTransform, Anc.L, new Vector2(380f * (i == 0 ? 0.75f : 0.9f) - 1.5f, 0f), new Vector2(3f, 20f));
+            }
+
+            // ---- REDLINE callout (SOURCE at melt >= redline threshold: flipping back pays)
+            var rl = UIKit.Box(Root, "Redline", danger, 0.72f);
+            UIKit.Place(rl.rectTransform, Anc.BL, new Vector2(36, 168), new Vector2(460, 48)); _redGo = rl.gameObject;
+            _red = UIKit.Text(rl.transform, "Label", hud, 30, danger, TextAlignmentOptions.Center, "REDLINE ► FLIP +" + Desync.Rules.Scoring.RedlinePts);
+            _red.fontStyle = FontStyles.Bold; _red.characterSpacing = 4f; UIKit.Stretch(_red.rectTransform);
+            _redGo.SetActive(false);
 
             // ---- glitch countdown (big number, upper-centre)
             var gg = UIKit.Obj(Root, "GlitchCountdown"); UIKit.Place(gg, Anc.C, new Vector2(0, -170), new Vector2(700, 200)); _glitchGo = gg.gameObject;
@@ -167,11 +202,6 @@ namespace Desync.UI
             _glitchNum = UIKit.Text(gg, "Number", title, 120, magenta, TextAlignmentOptions.Center, "3.0"); _glitchNum.fontStyle = FontStyles.Bold;
             _glitchNumRt = UIKit.Place(_glitchNum.rectTransform, Anc.B, new Vector2(0, 0), new Vector2(700, 150));
             _glitchGo.SetActive(false);
-
-            // ---- combo badge (right-centre)
-            _combo = GlitchLabel.Create(Root, "Combo", Anc.R, new Vector2(-48, 40), new Vector2(560, 90), hud, 60, cyan, TextAlignmentOptions.Right, 2.5f, true, 4f);
-            _comboRt = (RectTransform)_combo.transform; _comboGroup = _combo.gameObject.AddComponent<CanvasGroup>(); _comboGroup.alpha = 0f;
-            _comboRt.pivot = new Vector2(1f, 0.5f);
 
             // ---- centre pops
             _pops = new Pop[4];
@@ -195,7 +225,62 @@ namespace Desync.UI
             _rebootLabel = GlitchLabel.Create(rb.transform, "Label", Anc.C, Vector2.zero, new Vector2(1500, 240), title, 170, danger, TextAlignmentOptions.Center, 6f, true, 16f);
             _rebootGo.SetActive(false);
 
+            // ---- contextual hint (after 3 deaths in a room): above the REBOOT screen so it reads during the wipe
+            var hb = UIKit.Box(Root, "Hint", magenta, 0.85f);
+            UIKit.Place(hb.rectTransform, Anc.B, new Vector2(0, 300), new Vector2(1400, 96)); _hintGo = hb.gameObject;
+            _hintGroup = _hintGo.AddComponent<CanvasGroup>();
+            var htag = UIKit.Text(hb.transform, "Tag", hud, 26, magenta, TextAlignmentOptions.Left, "HINT"); htag.fontStyle = FontStyles.Bold; htag.characterSpacing = 6f;
+            UIKit.Place(htag.rectTransform, Anc.L, new Vector2(24, 0), new Vector2(110, 40));
+            _hint = UIKit.Text(hb.transform, "Text", term, 36, paper, TextAlignmentOptions.Left);
+            _hint.textWrappingMode = TextWrappingModes.Normal;
+            UIKit.Place(_hint.rectTransform, Anc.L, new Vector2(140, 0), new Vector2(1236, 88));
+            _hintGo.SetActive(false);
+
             SetLayer(false, false);
+        }
+
+        void BuildMedalRow(Transform parent)
+        {
+            var row = UIKit.Obj(parent, "Medals"); UIKit.Place(row, Anc.TL, new Vector2(24, -110), new Vector2(520, 30)); _medalGo = row.gameObject;
+            var bg = UIKit.Img(row, "BarBg", new Color(1, 1, 1, 0.14f)); UIKit.Place(bg.rectTransform, Anc.L, Vector2.zero, new Vector2(220, 8));
+            _medalFill = UIKit.Img(bg.transform, "Fill", UIKit.Paper); UIKit.Stretch(_medalFill.rectTransform);
+            _medalFill.type = Image.Type.Filled; _medalFill.fillMethod = Image.FillMethod.Horizontal; _medalFill.fillAmount = 0f;
+            // the bar spans 0 .. SILVER (1.6 x tDev); ticks mark SYNC (1.0) and GOLD (1.25), the right end is SILVER
+            _medalTicks = new Image[3];
+            for (int i = 0; i < 3; i++)
+            {
+                int m = 4 - i;   // SYNC, GOLD, SILVER
+                _medalTicks[i] = UIKit.Img(bg.transform, "Tick" + UIKit.MedalNames[m], UIKit.MedalColor(m));
+                UIKit.Place(_medalTicks[i].rectTransform, Anc.L, new Vector2(220f * UIKit.MedalLimit(m, 1f) / 1.6f - 1.5f, 0f), new Vector2(3f, 18f));
+            }
+            _medalNext = UIKit.Text(row, "Next", UIKit.Hud, 24, UIKit.Paper, TextAlignmentOptions.Left, "");
+            UIKit.Place(_medalNext.rectTransform, Anc.L, new Vector2(236, 0), new Vector2(290, 30));
+            _medalGo.SetActive(false);
+        }
+
+        void BuildScoreBlock()
+        {
+            var hud = UIKit.Hud;
+            _score = UIKit.Text(Root, "Score", hud, 68, UIKit.Paper, TextAlignmentOptions.Right, "0"); _score.fontStyle = FontStyles.Bold;   // Share Tech Mono: tabular digits
+            UIKit.Place(_score.rectTransform, Anc.TR, new Vector2(-36, -16), new Vector2(520, 80));
+            _mult = UIKit.Text(Root, "Mult", hud, 40, UIKit.Dim, TextAlignmentOptions.Right, "x1.00"); _mult.fontStyle = FontStyles.Bold;
+            _multRt = UIKit.Place(_mult.rectTransform, Anc.TR, new Vector2(-36, -96), new Vector2(300, 46));
+            _ghost = UIKit.Text(Root, "Ghost", hud, 30, UIKit.Cyan, TextAlignmentOptions.Right, ""); _ghost.fontStyle = FontStyles.Bold; _ghost.characterSpacing = 4f;
+            UIKit.Place(_ghost.rectTransform, Anc.TR, new Vector2(-36, -142), new Vector2(360, 38));
+            _ghost.gameObject.SetActive(false);
+
+            _spops = new ScorePopUI[6];
+            for (int i = 0; i < _spops.Length; i++)
+            {
+                var rt = UIKit.Place(UIKit.Obj(Root, "ScorePop" + i), Anc.TR, new Vector2(-36, -196), new Vector2(460, 44));
+                var p = new ScorePopUI { Rt = rt, G = rt.gameObject.AddComponent<CanvasGroup>() };
+                p.Pts = UIKit.Text(rt, "Pts", hud, 38, UIKit.Paper, TextAlignmentOptions.Right); p.Pts.fontStyle = FontStyles.Bold;
+                UIKit.Place(p.Pts.rectTransform, Anc.R, Vector2.zero, new Vector2(170, 44));
+                p.Label = UIKit.Text(rt, "Label", hud, 24, UIKit.Dim, TextAlignmentOptions.Right); p.Label.characterSpacing = 4f;
+                UIKit.Place(p.Label.rectTransform, Anc.R, new Vector2(-180, -2), new Vector2(280, 34));
+                rt.gameObject.SetActive(false);
+                _spops[i] = p;
+            }
         }
 
         void BuildControlCard()
@@ -233,10 +318,11 @@ namespace Desync.UI
         {
             _storyState = 0; _storyGroup.alpha = 0f; UIKit.Kill(ref _storyFade);
             for (int i = 0; i < _pops.Length; i++) { _pops[i].On = false; _pops[i].G.alpha = 0f; _pops[i].L.gameObject.SetActive(false); }
-            UIKit.Kill(ref _comboFade); _comboGroup.alpha = 0f;
+            for (int i = 0; i < _spops.Length; i++) { _spops[i].On = false; _spops[i].Rt.gameObject.SetActive(false); }
+            _hintT = 0f; _hintGo.SetActive(false);
             UIKit.Kill(ref _cardFade); _cardState = 0; _cardGroup.alpha = 0f; _cardGroup.gameObject.SetActive(false);
             for (int i = 0; i < _bars.Length; i++) { _barT[i] = 0f; _bars[i].gameObject.SetActive(false); }
-            _lastTenth = -1; _trLast = -1; _g10 = -1; _ls = -1; _h10 = -1;
+            _cs = -1; _trLast = -1; _g10 = -1; _ls = -1; _h10 = -1; _tDev = -1f; _multPulse = 0f; _multRt.localScale = Vector3.one;
         }
 
         public void OnFlipped(bool toSource) { SetLayer(toSource, true); }
@@ -283,15 +369,39 @@ namespace Desync.UI
 
         public void OnMeltWarning(bool on) { if (on) { UIKit.Pop(ref _meltTw, _meltRt, 1.3f, 0.35f); } }
 
-        public void OnCombo(int n)
+        /// Score pop under the score block (pooled: the oldest is recycled, no allocation).
+        public void OnScored(ScorePop s)
         {
-            if (n < 2) { UIKit.Fade(ref _comboFade, _comboGroup, 0f, 0.3f); return; }
-            _combo.SetText("GHOST ×" + n);
-            _combo.SetColor(n >= 5 ? UIKit.Magenta : n >= 3 ? UIKit.Green : UIKit.Cyan);
-            UIKit.Kill(ref _comboFade); _comboGroup.alpha = 1f;
-            UIKit.Pop(ref _comboTw, _comboRt, 1.5f + Mathf.Min(n, 6) * 0.05f, 0.4f);
-            _combo.Glitch(1f, 0.3f);
+            if (s.points <= 0) return;
+            ScorePopUI p = null;
+            for (int i = 0; i < _spops.Length && p == null; i++) if (!_spops[i].On) p = _spops[i];
+            if (p == null) { p = _spops[0]; for (int i = 1; i < _spops.Length; i++) if (_spops[i].Age > p.Age) p = _spops[i]; }
+            for (int i = 0; i < _spops.Length; i++) if (_spops[i].On && _spops[i] != p) _spops[i].TargetOff += 44f;   // older pops step down
+            p.On = true; p.Age = 0f; p.Off = 0f; p.TargetOff = 0f;
+            p.Rt.gameObject.SetActive(true); p.G.alpha = 1f;
+            int ti = (int)s.type;
+            p.Pts.SetText("+{0:0}", s.points);
+            p.Label.SetText(!string.IsNullOrEmpty(s.label) ? s.label : ti >= 0 && ti < EventLabels.Length ? EventLabels[ti] : "");
+            var c = PopColor(s.type); p.Pts.color = c;
+            p.Rt.localScale = Vector3.one * 1.25f;
         }
+
+        static Color PopColor(Desync.Rules.EventType t)
+        {
+            switch (t)
+            {
+                case Desync.Rules.EventType.Graze: return UIKit.Magenta;
+                case Desync.Rules.EventType.Redline: return UIKit.Danger;
+                case Desync.Rules.EventType.Hack:
+                case Desync.Rules.EventType.HackPerfect:
+                case Desync.Rules.EventType.NoTraceRoom:
+                case Desync.Rules.EventType.RoomClear: return UIKit.Green;
+                default: return UIKit.Cyan;
+            }
+        }
+
+        /// Flow raises Hint after the third death in a room; it shows on the next REBOOT for 4 s.
+        public void OnHint(string text) { _pendingHint = text; }
 
         public void OnAccessGranted(string line) { ShowStory(line); }
 
@@ -315,6 +425,11 @@ namespace Desync.UI
             _rebootGo.SetActive(true); _rebootGroup.alpha = 1f;
             _rebootLabel.Reveal("REBOOT", 0.12f); _rebootLabel.Glitch(2.2f, 0.5f);
             if (UIKit.Flashes) FlashBars(UIKit.Danger);
+            if (!string.IsNullOrEmpty(_pendingHint))
+            {
+                _hint.SetText(UIKit.Safe(_pendingHint, UIKit.Term)); _pendingHint = null;
+                _hintT = HintLife; _hintGroup.alpha = 1f; _hintGo.SetActive(true);
+            }
         }
 
         public void OnRoomReset() { if (_rebootOn) _rebootT = Mathf.Min(_rebootT, 0.25f); }
@@ -359,18 +474,13 @@ namespace Desync.UI
             int ri = GameState.RoomIndex;
             if (ri != _ri)
             {
-                _ri = ri; _lastTenth = -1;
-                _par = ri >= 0 && cfg.parTime != null && ri < cfg.parTime.Length ? cfg.parTime[ri] : 0f;
+                _ri = ri; _cs = -1;
                 _room.SetText(ri >= 0 && ri < _roomCodes.Length ? _roomCodes[ri] : "R-- · ---");
             }
-            float t = RoomClock.Time; int tenth = (int)(t * 10f);
-            if (tenth != _lastTenth)
-            {
-                _lastTenth = tenth;
-                bool over = _par > 0f && t > _par;
-                if (over != _overPar) { _overPar = over; _time.color = over ? UIKit.Danger : UIKit.Paper; }
-                _time.SetText("TIME {0:0}.{1:0}  PAR {2:0}s", tenth / 10, tenth % 10, _par);
-            }
+            float t = RoomClock.Time; int cs = (int)(t * 100f + 0.001f);
+            if (cs != _cs) { _cs = cs; UIKit.Clock(t, _clock); _timer.SetText(_clock, 0, 8); }
+            TickMedals(t);
+            TickScore(dt);
             int td = GameState.TerminalsDone, tt = GameState.TerminalsTotal;
             if (td != _td || tt != _tt) { _td = td; _tt = tt; _term.SetText("TERMINALS {0:0}/{1:0}", td, tt); if (td > 0) UIKit.Pop(ref _termTw, _term.transform, 1.2f, 0.25f); }
             if (GameState.ExitOpen != _exitOpen)
@@ -387,6 +497,71 @@ namespace Desync.UI
             TickCrosshair();
             TickText(dt);
             TickOverlays(dt);
+        }
+
+        void TickMedals(float t)
+        {
+            float tDev = RoomGoals.TDev(GameState.RoomIndex);
+            if (tDev != _tDev)
+            {
+                _tDev = tDev; _medal = -1;
+                _medalGo.SetActive(tDev > 0f);
+                if (tDev > 0f)   // labels change only with the room: build them here, never per frame
+                {
+                    for (int m = 2; m <= 4; m++) _medalLabels[m] = UIKit.MedalNames[m] + " " + UIKit.ClockShort(UIKit.MedalLimit(m, tDev));
+                    _medalLabels[1] = "BRONZE · CLEAR";
+                }
+            }
+            if (tDev <= 0f) { if (_timer.color != UIKit.Paper) _timer.color = UIKit.Paper; return; }
+            int medal = UIKit.MedalAt(t, tDev);
+            if (medal != _medal)
+            {
+                _medal = medal;
+                var c = UIKit.MedalColor(medal);
+                _medalNext.SetText(_medalLabels[medal]); _medalNext.color = c; _medalFill.color = c;
+                _timer.color = medal <= 1 ? UIKit.Danger : UIKit.Paper;
+                for (int i = 0; i < _medalTicks.Length; i++) { var k = _medalTicks[i].color; k.a = 4 - i > medal ? 0.3f : 1f; _medalTicks[i].color = k; }   // passed thresholds dim
+            }
+            _medalFill.fillAmount = Mathf.Clamp01(t / (1.6f * tDev));
+        }
+
+        void TickScore(float dt)
+        {
+            int score = GameState.Score;
+            if (score != _scoreShown) { _scoreShown = score; _score.SetText("{0:0}", score); }
+            float mult = GameState.Multiplier;
+            int m100 = Mathf.RoundToInt(mult * 100f);
+            if (m100 != _mult100)
+            {
+                bool first = _mult100 < 0; _mult100 = m100;
+                _mult.SetText("x{0:0.00}", mult);
+                _mult.color = mult >= 3f ? UIKit.Magenta : mult >= 2f ? UIKit.Green : mult > 1.001f ? UIKit.Cyan : UIKit.Dim;
+                if (!first) _multPulse = MultPulse;   // +12 % for 120 ms
+            }
+            if (_multPulse > 0f)
+            {
+                _multPulse = Mathf.Max(0f, _multPulse - dt);
+                _multRt.localScale = Vector3.one * (1f + 0.12f * (_multPulse / MultPulse));
+            }
+            int chain = GameState.Chain;
+            if (chain != _chain)
+            {
+                _chain = chain;
+                _ghost.gameObject.SetActive(chain > 0);
+                if (chain > 0) { _ghost.SetText("GHOST x{0:0}", chain); _ghost.color = chain >= 5 ? UIKit.Magenta : chain >= 3 ? UIKit.Green : UIKit.Cyan; }
+            }
+            for (int i = 0; i < _spops.Length; i++)
+            {
+                var p = _spops[i];
+                if (!p.On) continue;
+                p.Age += dt;
+                if (p.Age >= PopLife) { p.On = false; p.Rt.gameObject.SetActive(false); continue; }
+                p.Off = Mathf.Lerp(p.Off, p.TargetOff, 1f - Mathf.Exp(-16f * dt));
+                p.Rt.anchoredPosition = new Vector2(-36f, -196f - p.Off + 16f * (p.Age / PopLife));   // newest right under GHOST, drifting up
+                float s = p.Rt.localScale.x; if (s > 1f) p.Rt.localScale = Vector3.one * Mathf.Max(1f, s - dt * 3f);
+                float left = PopLife - p.Age;
+                p.G.alpha = left < 0.3f ? left / 0.3f : 1f;
+            }
         }
 
         void TickTrace(float dt)
@@ -429,14 +604,19 @@ namespace Desync.UI
                 bool vis = !UIKit.Flashes || ((int)(Time.unscaledTime * 5f) & 1) == 0;
                 if (vis != _warnVis) { _warnVis = vis; _warn.alpha = vis ? 1f : 0.2f; }
             }
-            // PRD 5.4, 70 %+: the whole HUD jitters (a few px, growing to 100 %) and the melt block a little harder. 30 Hz steps read as a shake at any frame rate.
-            if (warn && UIKit.Shake && !GameState.Paused)
+            // REDLINE callout: in SOURCE at melt >= the redline threshold, flipping back to RENDER pays.
+            bool red = LayerState.InSource && GameState.Alive && melt >= GameState.Mods.RedlineThreshold;
+            if (red != _redOn) { _redOn = red; _redGo.SetActive(red); if (red) UIKit.Pop(ref _meltTw, _meltRt, 1.15f, 0.25f); }
+            if (red) _red.alpha = !UIKit.Flashes || ((int)(Time.unscaledTime * 6f) & 1) == 0 ? 1f : 0.45f;
+            // Flash from 70 % (above), shake from 90 %: the whole HUD jitters (a few px, growing to 100 %) and the melt block a little harder.
+            // 30 Hz steps read as a shake at any frame rate.
+            if (melt >= MeltShakeAt && UIKit.Shake && !GameState.Paused)
             {
                 _shakeT -= dt;
                 if (_shakeT <= 0f)
                 {
                     _shakeT = 1f / 30f; _shaking = true;
-                    float a = Mathf.Lerp(1.5f, 4f, Mathf.InverseLerp(cfg.meltWarn, 100f, melt));
+                    float a = Mathf.Lerp(1.5f, 4f, Mathf.InverseLerp(MeltShakeAt, 100f, melt));
                     Root.anchoredPosition = new Vector2(Random.Range(-a, a), Random.Range(-a, a));
                     _meltRt.anchoredPosition = new Vector2(36f + Random.Range(-3f, 3f), 34f + Random.Range(-3f, 3f));
                 }
@@ -563,6 +743,12 @@ namespace Desync.UI
                 _rebootT -= dt;
                 _rebootGroup.alpha = Mathf.Clamp01(_rebootT / 0.25f);
                 if (_rebootT <= 0f) { _rebootOn = false; _rebootGo.SetActive(false); }
+            }
+            if (_hintT > 0f)
+            {
+                _hintT -= dt;
+                _hintGroup.alpha = Mathf.Clamp01(_hintT / 0.4f);
+                if (_hintT <= 0f) _hintGo.SetActive(false);
             }
         }
     }

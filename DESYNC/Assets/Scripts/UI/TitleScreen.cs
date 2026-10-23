@@ -9,7 +9,7 @@ namespace Desync.UI
     public sealed class TitleScreen : UIPanel
     {
         GlitchLabel _logo;
-        TMP_Text _tag, _intro, _jackIn, _meta, _sensVal, _caption;
+        TMP_Text _tag, _intro, _jackIn, _meta, _sensVal, _caption, _goals;
         Image _jackFrame;
         Slider _sens;
         Tween _pulse, _clickTw;
@@ -38,9 +38,11 @@ namespace Desync.UI
 
             _logo = GlitchLabel.Create(card.transform, "Logo", Anc.C, new Vector2(0, 225), new Vector2(1400, 260), UIKit.Title, 210, UIKit.Paper, TextAlignmentOptions.Center, 5f, true, 18f);
             _logo.IdleEvery = 2.8f;
+            _goals = UIKit.Text(card.transform, "Goals", UIKit.Hud, 30, UIKit.Dim, TextAlignmentOptions.Center); _goals.characterSpacing = 8f;
+            UIKit.Place(_goals.rectTransform, Anc.C, new Vector2(0, 116), new Vector2(1400, 38));
 
             _tag = UIKit.Text(card.transform, "Tagline", UIKit.Hud, 46, UIKit.Cyan, TextAlignmentOptions.Center, "SPACE = SEE THE CODE");
-            _tag.characterSpacing = 8f; UIKit.Place(_tag.rectTransform, Anc.C, new Vector2(0, 70), new Vector2(1400, 60));
+            _tag.characterSpacing = 8f; UIKit.Place(_tag.rectTransform, Anc.C, new Vector2(0, 62), new Vector2(1400, 60));
 
             _intro = UIKit.Text(card.transform, "Intro", UIKit.Term, 42, UIKit.Paper, TextAlignmentOptions.Top);
             _intro.textWrappingMode = TextWrappingModes.Normal;
@@ -101,6 +103,10 @@ namespace Desync.UI
             _intro.SetText(cfg.introLines != null && cfg.introLines.Length > 0 ? cfg.introLines[0] : "");
             _intro.maxVisibleCharacters = 0; _introChars = 0; _introShown = 0; _introDelay = 0.9f;
             _logo.Reveal("DESYNC", 0.9f);
+            string goals;
+            try { goals = GoalsLine(); }
+            catch (System.Exception e) { goals = "BEST --:-- · MEDALS 0/" + SceneFlow.RoomCount * 4; Debug.LogWarning("[DESYNC] title goals: save unavailable (" + e.GetType().Name + ")"); }   // the title must never fail on a save problem
+            _goals.SetText(goals);
             _flipT = FlipEvery;
             LayerState.Set(false);
             _shownSource = false; Tint();
@@ -108,6 +114,17 @@ namespace Desync.UI
             _jackPanel.localScale = Vector3.one;
             _pulse = Tween.Scale(_jackPanel, 1f, 1.045f, 0.55f, Ease.InOutSine, cycles: -1, cycleMode: CycleMode.Yoyo, useUnscaledTime: true);
             FreeCursor();
+        }
+
+        /// "BEST m:ss · MEDALS n/24": total of the best room times; medals count every tier earned (BRONZE 1 .. SYNC 4 per room).
+        internal static string GoalsLine()
+        {
+            var save = Desync.Net.SaveService.Data;
+            int medals = 0;
+            foreach (var v in save.medals.Values) medals += v == "SYNC" ? 4 : v == "G" ? 3 : v == "S" ? 2 : v == "B" ? 1 : 0;
+            int t = (int)Desync.Net.SaveService.TotalBestTime();
+            string best = t > 0 ? (t / 60) + ":" + (t % 60).ToString("00") : "--:--";
+            return "BEST " + best + " · MEDALS " + medals + "/" + SceneFlow.RoomCount * 4;
         }
 
         public override void Hide()

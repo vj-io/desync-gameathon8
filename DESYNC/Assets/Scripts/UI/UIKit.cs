@@ -2,6 +2,7 @@ using System.Text;
 using PrimeTween;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Desync.UI
@@ -26,7 +27,9 @@ namespace Desync.UI
         {
             float t = Time.unscaledTime;
             if (t < _pollAt && t > _pollAt - 0.6f) return;
-            _pollAt = t + 0.5f; _flashes = !Settings.ReduceFlashes; _shake = Settings.Shake;
+            _pollAt = t + 0.5f;
+            bool calm = Settings.ReduceFx;   // REDUCE FX: shake x0, flashes off (chromatic x0.3 lives in PostFXController)
+            _flashes = !Settings.ReduceFlashes && !calm; _shake = Settings.Shake && !calm;
         }
         public static bool Flashes { get { Poll(); return _flashes; } }
         public static bool Shake { get { Poll(); return _shake; } }
@@ -184,6 +187,63 @@ namespace Desync.UI
             if (g == 0) return null;
             int s = (int)PlayerPrefs.GetFloat("bestT" + room, 0f);
             return "BEST " + (s / 60) + ":" + (s % 60).ToString("00") + " " + (char)g;
+        }
+
+        // ---------------------------------------------------------------- UI-only keys (Core's GameInput covers R / SPACE / ESC)
+        public static readonly InputAction AnyKey = new InputAction("UIAny", InputActionType.Button);
+        public static readonly InputAction CopyKey = new InputAction("UICopy", InputActionType.Button, "<Keyboard>/c");
+        public static readonly InputAction GoalsKey = new InputAction("UIGoals", InputActionType.Button, "<Keyboard>/tab");
+
+        static UIKit()
+        {
+            foreach (var b in new[] { "<Keyboard>/anyKey", "<Mouse>/leftButton", "<Gamepad>/buttonSouth", "<Gamepad>/buttonEast",
+                                      "<Gamepad>/buttonNorth", "<Gamepad>/buttonWest", "<Gamepad>/start", "<Gamepad>/select" })
+                AnyKey.AddBinding(b);
+            CopyKey.AddBinding("<Gamepad>/buttonNorth");
+            AnyKey.Enable(); CopyKey.Enable(); GoalsKey.Enable();
+        }
+
+        // ---------------------------------------------------------------- time
+        /// Writes "mm:ss.cc" (8 chars, clamped to 99:59.99) into buf. No allocation: pair with TMP_Text.SetText(buf, 0, 8).
+        public static int Clock(float t, char[] buf)
+        {
+            int cs = t > 0f ? Mathf.Min((int)(t * 100f + 0.001f), 99 * 6000 + 5999) : 0;
+            int m = cs / 6000, s = cs / 100 % 60, c = cs % 100;
+            buf[0] = (char)('0' + m / 10); buf[1] = (char)('0' + m % 10); buf[2] = ':';
+            buf[3] = (char)('0' + s / 10); buf[4] = (char)('0' + s % 10); buf[5] = '.';
+            buf[6] = (char)('0' + c / 10); buf[7] = (char)('0' + c % 10);
+            return 8;
+        }
+
+        static readonly char[] _clk = new char[8];
+        /// "m:ss.cc" (leading minute zero dropped), e.g. "0:41.27". Allocates: call on Show, never per frame.
+        public static string ClockShort(float t) { Clock(t, _clk); return _clk[0] == '0' ? new string(_clk, 1, 7) : new string(_clk, 0, 8); }
+
+        // ---------------------------------------------------------------- medals (index = (int)Rules.Medal: None, Bronze, Silver, Gold, Sync)
+        public static readonly string[] MedalNames = { "-", "BRONZE", "SILVER", "GOLD", "SYNC" };
+        static readonly float[] MedalMult = { 0f, float.PositiveInfinity, 1.6f, 1.25f, 1f };
+
+        /// Time limit for a medal: SYNC tDev x1.0, GOLD x1.25, SILVER x1.6, BRONZE = any clear (infinity).
+        public static float MedalLimit(int medal, float tDev) => medal >= 1 && medal <= 4 ? MedalMult[medal] * tDev : 0f;
+
+        /// Best medal still reachable at room time t (4 SYNC .. 1 BRONZE). tDev <= 0 -> 0 (unknown).
+        public static int MedalAt(float t, float tDev)
+        {
+            if (tDev <= 0f) return 0;
+            for (int m = 4; m >= 2; m--) if (t <= MedalMult[m] * tDev) return m;
+            return 1;
+        }
+
+        public static Color MedalColor(int medal)
+        {
+            switch (medal)
+            {
+                case 4: return Magenta;
+                case 3: return new Color(1f, 0.82f, 0.25f);
+                case 2: return new Color(0.78f, 0.84f, 0.95f);
+                case 1: return new Color(0.82f, 0.52f, 0.3f);
+                default: return Dim;
+            }
         }
 
         // ---------------------------------------------------------------- grades

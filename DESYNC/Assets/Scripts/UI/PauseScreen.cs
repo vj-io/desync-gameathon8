@@ -10,7 +10,7 @@ namespace Desync.UI
     public sealed class PauseScreen : UIPanel
     {
         GlitchLabel _head; TMP_Text _sub, _sensVal, _volVal;
-        Slider _sens, _vol; NeonToggle _shake, _flash, _bob;
+        Slider _sens, _vol; NeonToggle _shake, _flash, _fx, _bob;
         UIButton _res75, _res100;
         RectTransform _panel; Tween _pop, _pulse;
 
@@ -29,8 +29,8 @@ namespace Desync.UI
             // ---- controls (left)
             var ch = UIKit.Text(panel.transform, "ControlsHead", UIKit.Title, 28, cyan, TextAlignmentOptions.Left, "CONTROLS"); ch.fontStyle = FontStyles.Bold; ch.characterSpacing = 6f;
             UIKit.Place(ch.rectTransform, Anc.T, new Vector2(-300, -212), new Vector2(480, 40));
-            string[,] k = { { "WASD", "MOVE" }, { "MOUSE", "LOOK" }, { "SPACE", "FLIP LAYER" }, { "E", "HACK" }, { "← ↑ → ↓", "ENTER CODE" }, { "R", "RESTART ROOM" }, { "ESC", "PAUSE" } };
-            for (int i = 0; i < 7; i++)
+            string[,] k = { { "WASD", "MOVE" }, { "MOUSE", "LOOK" }, { "SPACE", "FLIP LAYER" }, { "E", "HACK" }, { "← ↑ → ↓", "ENTER CODE" }, { "R", "RESTART ROOM" }, { "ESC", "PAUSE" }, { "TAB", "GOALS (HOLD)" } };
+            for (int i = 0; i < k.GetLength(0); i++)
             {
                 float y = -268 - i * 50;
                 var kt = UIKit.Text(panel.transform, "Key" + i, UIKit.Hud, 30, i == 2 ? magenta : cyan, TextAlignmentOptions.Left, k[i, 0]); kt.fontStyle = FontStyles.Bold;
@@ -56,14 +56,15 @@ namespace Desync.UI
             UIKit.Place(_volVal.rectTransform, Anc.T, new Vector2(cx + w * 0.5f - 60, -366), new Vector2(120, 40));
             _vol = UIControls.NewSlider(panel.transform, "Vol", Anc.T, new Vector2(cx, -410), w, 0f, 1f, Settings.Volume, v => { Settings.Volume = v; _volVal.SetText("{0:0}%", Mathf.Round(Settings.Volume * 100f)); Changed(); });
 
-            _shake = UIControls.NewToggle(panel.transform, "Shake", "SCREEN SHAKE", Anc.T, new Vector2(cx, -474), w, Settings.Shake, v => { Settings.Shake = v; Changed(); });
-            _flash = UIControls.NewToggle(panel.transform, "Flash", "REDUCE FLASHES", Anc.T, new Vector2(cx, -530), w, Settings.ReduceFlashes, v => { Settings.ReduceFlashes = v; Changed(); });
-            _bob = UIControls.NewToggle(panel.transform, "Bob", "HEAD-BOB", Anc.T, new Vector2(cx, -586), w, Settings.HeadBob, v => { Settings.HeadBob = v; Changed(); });
+            _shake = UIControls.NewToggle(panel.transform, "Shake", "SCREEN SHAKE", Anc.T, new Vector2(cx, -462), w, Settings.Shake, v => { Settings.Shake = v; Changed(); });
+            _flash = UIControls.NewToggle(panel.transform, "Flash", "REDUCE FLASHES", Anc.T, new Vector2(cx, -512), w, Settings.ReduceFlashes, v => { Settings.ReduceFlashes = v; Changed(); });
+            _fx = UIControls.NewToggle(panel.transform, "ReduceFx", "REDUCE FX", Anc.T, new Vector2(cx, -562), w, Settings.ReduceFx, v => { Settings.ReduceFx = v; Changed(); });   // shake x0, flashes off, chromatic x0.3
+            _bob = UIControls.NewToggle(panel.transform, "Bob", "HEAD-BOB", Anc.T, new Vector2(cx, -612), w, Settings.HeadBob, v => { Settings.HeadBob = v; Changed(); });
 
             var rl = UIKit.Text(panel.transform, "ResLabel", UIKit.Hud, 28, paper, TextAlignmentOptions.Left, "RESOLUTION SCALE");
-            UIKit.Place(rl.rectTransform, Anc.T, new Vector2(cx - 90, -650), new Vector2(w - 130, 40));
-            _res75 = UIButton.Create(panel.transform, "Res75", "75%", Anc.T, new Vector2(cx + 86, -650), new Vector2(104, 44), 24, cyan, () => SetRes(0.75f), UIKit.Hud);
-            _res100 = UIButton.Create(panel.transform, "Res100", "100%", Anc.T, new Vector2(cx + 198, -650), new Vector2(104, 44), 24, cyan, () => SetRes(1f), UIKit.Hud);
+            UIKit.Place(rl.rectTransform, Anc.T, new Vector2(cx - 90, -668), new Vector2(w - 130, 40));
+            _res75 = UIButton.Create(panel.transform, "Res75", "75%", Anc.T, new Vector2(cx + 86, -668), new Vector2(104, 44), 24, cyan, () => SetRes(0.75f), UIKit.Hud);
+            _res100 = UIButton.Create(panel.transform, "Res100", "100%", Anc.T, new Vector2(cx + 198, -668), new Vector2(104, 44), 24, cyan, () => SetRes(1f), UIKit.Hud);
 
             // ---- buttons
             UIButton.Create(panel.transform, "Resume", "RESUME", Anc.B, new Vector2(-380, 54), new Vector2(340, 86), 44, cyan, () => GameEvents.ResumeRequested?.Invoke());
@@ -94,7 +95,7 @@ namespace Desync.UI
             _head.SetColor(lockLost ? UIKit.Magenta : UIKit.Paper);
             _sens.SetValueWithoutNotify(Settings.Sensitivity); _sensVal.SetText("{0:0.00}", Settings.Sensitivity);
             _vol.SetValueWithoutNotify(Settings.Volume); _volVal.SetText("{0:0}%", Mathf.Round(Settings.Volume * 100f));
-            _shake.Set(Settings.Shake); _flash.Set(Settings.ReduceFlashes); _bob.Set(Settings.HeadBob);
+            _shake.Set(Settings.Shake); _flash.Set(Settings.ReduceFlashes); _fx.Set(Settings.ReduceFx); _bob.Set(Settings.HeadBob);
             PaintRes();
             UIKit.Pop(ref _pop, _panel, 0.9f, 0.22f);
             UIKit.Kill(ref _pulse);

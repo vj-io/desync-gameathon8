@@ -19,7 +19,8 @@ namespace Desync.UI
 
         RectTransform _root;
         EventSystem _es;
-        TitleScreen _title; HudScreen _hud; PauseScreen _pause; LevelSelectScreen _levels; GradeCard _grade; FinaleScreen _finale; EndingScreen _ending;
+        TitleScreen _title; HudScreen _hud; PauseScreen _pause; LevelSelectScreen _levels; ResultsScreen _results; RecapScreen _recap; GoalsOverlay _goals;
+        FinaleScreen _finale; EndingScreen _ending;
         bool _built;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -65,10 +66,16 @@ namespace Desync.UI
             _title = Make<TitleScreen>("Title");
             _ending = Make<EndingScreen>("Ending");
             _hud = Make<HudScreen>("Hud");
-            _grade = Make<GradeCard>("GradeCard");
+            _recap = Make<RecapScreen>("Recap");
+            _goals = Make<GoalsOverlay>("Goals");
             _finale = Make<FinaleScreen>("Finale");
+            _results = Make<ResultsScreen>("Results");   // above the finale: room 6 reports at the finale's end
             _pause = Make<PauseScreen>("Pause");
             _levels = Make<LevelSelectScreen>("LevelSelect");
+
+            var sfx = gameObject.AddComponent<AudioSource>();   // UI-local: results tally ticks (pitch per line)
+            sfx.playOnAwake = false; sfx.spatialBlend = 0f; sfx.ignoreListenerPause = true;
+            _results.Init(sfx);
         }
 
         void EnsureEventSystem()
@@ -116,7 +123,7 @@ namespace Desync.UI
             if (m == Mode.Title) _title.Show(); else _title.Hide();
             if (m == Mode.Ending) _ending.Show(); else _ending.Hide();
             if (m == Mode.Room) _hud.Show(); else _hud.Hide();
-            if (m != Mode.Room) { _pause.Hide(); _grade.Hide(); _finale.Hide(); }
+            if (m != Mode.Room) { _pause.Hide(); _results.Hide(); _recap.Hide(); _goals.Hide(); _finale.Hide(); }
             _levels.Hide();
         }
 
@@ -125,7 +132,7 @@ namespace Desync.UI
             if (mode != LoadSceneMode.Single) return;
             DropExtraEventSystems();
             SetMode(ModeFor(s.name));
-            if (Current == Mode.Room) { _grade.Hide(); _finale.Hide(); }
+            if (Current == Mode.Room) { _results.Hide(); _recap.Hide(); _finale.Hide(); }
         }
 
         // ------------------------------------------------------------------ event wiring
@@ -137,17 +144,19 @@ namespace Desync.UI
             GameEvents.Paused += OnPaused;
             GameEvents.LevelSelectToggled += OnLevels;
             GameEvents.RoomStarted += OnRoomStarted;
-            GameEvents.RoomCleared += OnRoomCleared;
+            GameEvents.DeathRecap += OnDeathRecap;
+            GameEvents.RoomReportReady += OnRoomReport;
+            GameEvents.Scored += _hud.OnScored;
+            GameEvents.Hint += _hud.OnHint;
             GameEvents.GameCompleted += OnGameCompleted;
             GameEvents.Flipped += _hud.OnFlipped;
             GameEvents.FlipRejected += _hud.OnFlipRejected;
             GameEvents.TraceStarted += _hud.OnTraceStarted;
             GameEvents.MeltWarning += _hud.OnMeltWarning;
-            GameEvents.ComboChanged += _hud.OnCombo;
             GameEvents.AccessGranted += _hud.OnAccessGranted;
             GameEvents.ExitOpened += _hud.OnExitOpened;
             GameEvents.Rebooting += OnRebooting;
-            GameEvents.RoomReset += _hud.OnRoomReset;
+            GameEvents.RoomReset += OnRoomReset;
             GameEvents.Hijacked += _hud.OnHijacked;
             GameEvents.PopText += _hud.ShowPop;
         }
@@ -160,17 +169,19 @@ namespace Desync.UI
             GameEvents.Paused -= OnPaused;
             GameEvents.LevelSelectToggled -= OnLevels;
             GameEvents.RoomStarted -= OnRoomStarted;
-            GameEvents.RoomCleared -= OnRoomCleared;
+            GameEvents.DeathRecap -= OnDeathRecap;
+            GameEvents.RoomReportReady -= OnRoomReport;
+            GameEvents.Scored -= _hud.OnScored;
+            GameEvents.Hint -= _hud.OnHint;
             GameEvents.GameCompleted -= OnGameCompleted;
             GameEvents.Flipped -= _hud.OnFlipped;
             GameEvents.FlipRejected -= _hud.OnFlipRejected;
             GameEvents.TraceStarted -= _hud.OnTraceStarted;
             GameEvents.MeltWarning -= _hud.OnMeltWarning;
-            GameEvents.ComboChanged -= _hud.OnCombo;
             GameEvents.AccessGranted -= _hud.OnAccessGranted;
             GameEvents.ExitOpened -= _hud.OnExitOpened;
             GameEvents.Rebooting -= OnRebooting;
-            GameEvents.RoomReset -= _hud.OnRoomReset;
+            GameEvents.RoomReset -= OnRoomReset;
             GameEvents.Hijacked -= _hud.OnHijacked;
             GameEvents.PopText -= _hud.ShowPop;
         }
@@ -190,16 +201,20 @@ namespace Desync.UI
         void OnRoomStarted(int room)
         {
             SetMode(Mode.Room);
-            _grade.Hide(); _finale.Hide(); _levels.Hide();
+            _results.Hide(); _recap.Hide(); _finale.Hide(); _levels.Hide();
             if (!GameState.Paused) _pause.Hide();
             _hud.OnRoomStarted(room);
         }
 
-        void OnRoomCleared(RoomResult r) { _grade.Show(r); }
+        void OnDeathRecap(DeathInfo d) { if (Current == Mode.Room) { _goals.Hide(); _recap.Show(d); } }
 
-        void OnGameCompleted() { _grade.Hide(); _finale.Show(); }
+        void OnRoomReport(RoomReport r) { if (r == null) return; _goals.Hide(); _recap.Hide(); _results.Show(r); }
 
-        void OnRebooting() { _grade.Hide(); _hud.OnRebooting(); }
+        void OnGameCompleted() { _results.Hide(); _finale.Show(); }
+
+        void OnRebooting() { _results.Hide(); _recap.Hide(); _hud.OnRebooting(); }
+
+        void OnRoomReset() { _recap.Hide(); _hud.OnRoomReset(); }
 
         // ------------------------------------------------------------------ frame
         void Update() { TickAll(Time.unscaledDeltaTime); }
@@ -212,11 +227,14 @@ namespace Desync.UI
                 case Mode.Room:
                     if (GameState.Paused && !_pause.IsOn && !_levels.IsOn) OnPaused(true);   // missed the event / level select just closed
                     _hud.Tick(dt);
+                    bool goals = UIKit.GoalsKey.IsPressed() && !GameState.Paused && !_results.IsOn && !_recap.IsOn;   // TAB (hold)
+                    if (goals != _goals.IsOn) { if (goals) _goals.Show(); else _goals.Hide(); }
                     break;
                 case Mode.Ending: _ending.Tick(dt); break;
             }
             if (_pause.IsOn) _pause.Tick(dt);
-            if (_grade.IsOn) _grade.Tick(dt);
+            if (_recap.IsOn) _recap.Tick(dt);
+            if (_results.IsOn) _results.Tick(dt);
             if (_finale.IsOn) _finale.Tick(dt);
             if (_levels.IsOn) _levels.Tick(dt);
         }
