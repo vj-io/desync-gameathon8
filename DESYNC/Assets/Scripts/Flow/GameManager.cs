@@ -10,6 +10,7 @@ namespace Desync.Flow
 {
     /// Persistent scene flow: Boot->Title, start/quit requests, pause + pointer lock, F2 level select, F9 demo mode,
     /// settings application. Self-bootstraps so any scene can be played directly.
+    [DefaultExecutionOrder(100)]   // after gameplay Updates: a pad South press that resumes can't also flip on that same frame (Paused is still true for them)
     public class GameManager : MonoBehaviour
     {
         public static GameManager I;
@@ -97,6 +98,7 @@ namespace Desync.Flow
 #if !UNITY_WEBGL || UNITY_EDITOR
                 else if (GameInput.Pause.WasPressedThisFrame()) Resume();   // on WebGL Esc only ever pauses (browser owns it)
 #endif
+                else if (PadResume()) Resume();   // gamepad: Start (works on WebGL too) or South; the pause buttons are mouse-only
                 return;
             }
             if (GameInput.Pause.WasPressedThisFrame()) { Pause(); return; }
@@ -114,6 +116,12 @@ namespace Desync.Flow
             GameEvents.Paused?.Invoke(true);
             Cursor.lockState = CursorLockMode.None;
             sawLock = false;
+        }
+
+        static bool PadResume()
+        {
+            var pad = Gamepad.current;
+            return pad != null && (pad.startButton.wasPressedThisFrame || pad.buttonSouth.wasPressedThisFrame);
         }
 
         /// True if the topmost UI hit under the pointer is a control (button/slider/toggle: anything handling pointer-down).

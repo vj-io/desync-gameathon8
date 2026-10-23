@@ -20,7 +20,7 @@ namespace Desync.UI
         RectTransform _traceRt; CanvasGroup _traceGroup; TMP_Text _traceText, _tracePips; Image _edge; Tween _traceTw;
         bool _traceOn; int _trLast = -1; float _edgeA;
         // ---- melt
-        RectTransform _meltRt; TMP_Text _melt, _warn; Image _meltFill; Tween _meltTw; int _mi = -1; bool _warnOn, _warnVis = true; bool _meltJitter;
+        RectTransform _meltRt; TMP_Text _melt, _warn; Image _meltFill; Tween _meltTw; int _mi = -1; bool _warnOn, _warnVis = true; bool _shaking; float _shakeT;
         // ---- glitch / lockdown / hijack / demo
         GameObject _glitchGo; TMP_Text _glitchNum; RectTransform _glitchNumRt; Tween _glitchTw; int _g10 = -1, _gInt = -1;
         TMP_Text _lock; GameObject _lockGo; RectTransform _lockRt; Tween _lockTw; int _ls = -1;
@@ -225,6 +225,8 @@ namespace Desync.UI
         {
             ClearTransient();
             if (room == 0) ShowControlCard();
+            var intro = GameConfig.I.introLines;
+            if (room == 1 && intro != null && intro.Length > 1) ShowStory(intro[1]);   // PRD 5.6: story line 2 (line 1 = title, line 3 = ending)
         }
 
         void ClearTransient()
@@ -291,7 +293,9 @@ namespace Desync.UI
             _combo.Glitch(1f, 0.3f);
         }
 
-        public void OnAccessGranted(string line)
+        public void OnAccessGranted(string line) { ShowStory(line); }
+
+        void ShowStory(string line)
         {
             if (string.IsNullOrEmpty(line)) return;
             line = UIKit.Safe(line, UIKit.Term);
@@ -424,9 +428,20 @@ namespace Desync.UI
             {
                 bool vis = !UIKit.Flashes || ((int)(Time.unscaledTime * 5f) & 1) == 0;
                 if (vis != _warnVis) { _warnVis = vis; _warn.alpha = vis ? 1f : 0.2f; }
-                if (UIKit.Shake && !GameState.Paused) { _meltJitter = true; _meltRt.anchoredPosition = new Vector2(36f + Random.Range(-3f, 3f), 34f + Random.Range(-3f, 3f)); }
             }
-            else if (_meltJitter) { _meltJitter = false; _meltRt.anchoredPosition = new Vector2(36f, 34f); }
+            // PRD 5.4, 70 %+: the whole HUD jitters (a few px, growing to 100 %) and the melt block a little harder. 30 Hz steps read as a shake at any frame rate.
+            if (warn && UIKit.Shake && !GameState.Paused)
+            {
+                _shakeT -= dt;
+                if (_shakeT <= 0f)
+                {
+                    _shakeT = 1f / 30f; _shaking = true;
+                    float a = Mathf.Lerp(1.5f, 4f, Mathf.InverseLerp(cfg.meltWarn, 100f, melt));
+                    Root.anchoredPosition = new Vector2(Random.Range(-a, a), Random.Range(-a, a));
+                    _meltRt.anchoredPosition = new Vector2(36f + Random.Range(-3f, 3f), 34f + Random.Range(-3f, 3f));
+                }
+            }
+            else if (_shaking) { _shaking = false; _shakeT = 0f; Root.anchoredPosition = Vector2.zero; _meltRt.anchoredPosition = new Vector2(36f, 34f); }
         }
 
         void TickCountdowns(float dt, GameConfig cfg)

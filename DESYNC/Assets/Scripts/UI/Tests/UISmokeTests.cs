@@ -1,8 +1,11 @@
 using System.Collections;
 using System.IO;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.TestTools;
@@ -150,6 +153,152 @@ namespace Desync.UI.Tests
             LogAssert.ignoreFailingMessages = false;
             GameEvents.StartRequested -= h;
             Assert.AreEqual(0, started);
+        }
+
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Title_Space_And_Pad_Start_Raise_Start()
+        {
+            Debug.Log("[UI-TEST] begin Title_Space_And_Pad_Start_Raise_Start");
+            var ui = UIManager.I; int started = -1;
+            System.Action<int> h = r => started = r; GameEvents.StartRequested += h;
+            var bg = InputSystem.settings.backgroundBehavior;
+            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;   // batchmode has no focus
+#if UNITY_EDITOR
+            var gv = InputSystem.settings.editorInputBehaviorInPlayMode;   // keyboards only work while a Game View has focus (batchmode has none)
+            InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+#endif
+            var pad = InputSystem.AddDevice<Gamepad>();
+            var kb = InputSystem.AddDevice<Keyboard>();   // a real keyboard is focus-disabled in batchmode: use a virtual one
+            InputSystem.EnableDevice(kb);
+            try
+            {
+                var presses = new (string name, System.Action press)[]
+                {
+                    ("pad Start", () => InputSystem.QueueStateEvent(pad, new GamepadState(GamepadButton.Start))),
+                    ("pad South", () => InputSystem.QueueStateEvent(pad, new GamepadState(GamepadButton.South))),
+                    ("Space", () => InputSystem.QueueStateEvent(kb, new KeyboardState(Key.Space))),
+                };
+                foreach (var (name, press) in presses)
+                {
+                    started = -1;
+                    ui.SetMode(UIManager.Mode.Title, true);
+                    yield return Frames(3);
+                    Assert.AreEqual(-1, started, "title must not start on its own");
+                    press();
+                    yield return Frames(3);
+                    Assert.AreEqual(0, started, name + " must start the run");
+                    InputSystem.QueueStateEvent(pad, new GamepadState()); InputSystem.QueueStateEvent(kb, new KeyboardState());
+                    yield return Frames(3);
+                }
+            }
+            finally
+            {
+                InputSystem.settings.backgroundBehavior = bg;
+#if UNITY_EDITOR
+                InputSystem.settings.editorInputBehaviorInPlayMode = gv;
+#endif
+                InputSystem.RemoveDevice(pad); InputSystem.RemoveDevice(kb); GameEvents.StartRequested -= h;
+                ui.SetMode(UIManager.Mode.None, true);
+            }
+        }
+
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Story_Line2_Shows_When_Room2_Starts()
+        {
+            Debug.Log("[UI-TEST] begin Story_Line2_Shows_When_Room2_Starts");
+            var ui = UIManager.I;
+            ui.SetMode(UIManager.Mode.Room, true);
+            var story = GameObject.Find("Story").GetComponent<TMP_Text>();
+            GameState.RoomIndex = 0; GameEvents.RoomStarted?.Invoke(0);
+            yield return Frames(2);
+            Assert.AreNotEqual("> " + GameConfig.I.introLines[1], story.text, "line 2 belongs to Room 2 only");
+            GameState.RoomIndex = 1; GameEvents.RoomStarted?.Invoke(1);
+            yield return Frames(2);
+            string want = UIKit.Safe("> " + GameConfig.I.introLines[1], UIKit.Term);
+            Assert.AreEqual(want, story.text);
+            Assert.AreEqual(1f, story.GetComponent<CanvasGroup>().alpha, 1e-4f);
+            yield return new WaitForSecondsRealtime(want.Length / 64f + 0.5f);   // typewriter (64 cps) has finished
+            Assert.GreaterOrEqual(story.maxVisibleCharacters, want.Length);
+        }
+
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Hud_Shakes_From_Melt_Warn_Honours_Setting_And_Settles()
+        {
+            Debug.Log("[UI-TEST] begin Hud_Shakes_From_Melt_Warn_Honours_Setting_And_Settles");
+            var ui = UIManager.I;
+            ui.SetMode(UIManager.Mode.Room, true);
+            var root = (RectTransform)GameObject.Find("Hud").transform;
+            bool oldShake = Settings.Shake;
+            try
+            {
+                Settings.Shake = true; UIKit.RefreshSettings();
+                float Max(float melt)
+                {
+                    GameState.Melt = melt; float m = 0f;
+                    for (int i = 0; i < 30; i++) { ui.TickAll(0.016f); m = Mathf.Max(m, root.anchoredPosition.magnitude); }
+                    return m;
+                }
+                Assert.AreEqual(0f, Max(GameConfig.I.meltWarn - 5f), "calm below the warn threshold");
+                float hi = Max(100f);
+                Assert.Greater(hi, 0.1f, "HUD root jitters at melt >= warn");
+                Assert.LessOrEqual(hi, 4f * 1.4143f + 0.01f, "a few px at most");
+                Assert.AreEqual(0f, Max(10f), "settles once melt drops");
+                Settings.Shake = false; UIKit.RefreshSettings();
+                Assert.AreEqual(0f, Max(100f), "Settings.Shake off: no jitter");
+                Assert.AreEqual(Vector2.zero, root.anchoredPosition);
+                Settings.Shake = true; UIKit.RefreshSettings();
+                Max(100f);
+                GameState.Paused = true; ui.TickAll(0.016f);
+                Assert.AreEqual(Vector2.zero, root.anchoredPosition, "no jitter while paused");
+            }
+            finally { Settings.Shake = oldShake; UIKit.RefreshSettings(); GameState.Paused = false; GameEvents.Paused?.Invoke(false); GameState.Melt = 0f; ui.TickAll(0.016f); }
+            yield return null;
+        }
+
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Saved_Best_Shows_On_LevelSelect_And_Ending()
+        {
+            Debug.Log("[UI-TEST] begin Saved_Best_Shows_On_LevelSelect_And_Ending");
+            var ui = UIManager.I;
+            var oldT = new float[2]; var oldG = new int[2]; var had = new bool[2];   // keep the developer's own saved bests
+            for (int i = 0; i < 2; i++) { had[i] = PlayerPrefs.HasKey("bestG" + i); oldT[i] = PlayerPrefs.GetFloat("bestT" + i); oldG[i] = PlayerPrefs.GetInt("bestG" + i); PlayerPrefs.DeleteKey("bestT" + i); PlayerPrefs.DeleteKey("bestG" + i); }
+            try
+            {
+                PlayerPrefs.SetFloat("bestT1", 62.7f); PlayerPrefs.SetInt("bestG1", 'A');
+                Assert.IsNull(UIKit.BestLabel(0));
+                Assert.AreEqual("BEST 1:02 A", UIKit.BestLabel(1));
+
+                ui.SetMode(UIManager.Mode.Room, true);
+                GameEvents.LevelSelectToggled?.Invoke(true);
+                yield return null;
+                var par = GameConfig.I.parTime;
+                Assert.AreEqual("PAR " + par[0].ToString("0") + "s", Parsed("Room0"));
+                Assert.AreEqual("PAR " + par[1].ToString("0") + "s · BEST 1:02 A", Parsed("Room1"));
+                yield return Shot("13_levelselect_best");
+                GameEvents.LevelSelectToggled?.Invoke(false);
+
+                for (int i = 0; i < 6; i++) GameState.Results[i] = new RoomResult { room = i, time = 20 + i * 13.7f, traces = i % 3, flips = 3 + i, bestCombo = i, grade = "SAABCS"[i] };
+                GameState.Results[0] = default;
+                ui.SetMode(UIManager.Mode.Ending, true);
+                yield return new WaitForSecondsRealtime(2.2f);
+                yield return Shot("14_ending_best");
+                Assert.AreEqual("", Parsed("Cell0", "Best"));
+                Assert.AreEqual("BEST 1:02 A", Parsed("Cell1", "Best"), "saved best shows on the run report, played this run or not");
+            }
+            finally
+            {
+                for (int i = 0; i < 2; i++) { PlayerPrefs.DeleteKey("bestT" + i); PlayerPrefs.DeleteKey("bestG" + i); if (had[i]) { PlayerPrefs.SetFloat("bestT" + i, oldT[i]); PlayerPrefs.SetInt("bestG" + i, oldG[i]); } }
+                PlayerPrefs.Save();
+                for (int i = 0; i < 6; i++) GameState.Results[i] = default;
+                ui.SetMode(UIManager.Mode.None, true);
+            }
+        }
+
+        static string Parsed(string obj, string child = "Info")
+        {
+            var t = GameObject.Find(obj).transform.Find(child).GetComponent<TMP_Text>();
+            t.ForceMeshUpdate();
+            return t.GetParsedText().Trim();
         }
 
         [UnityTest, Timeout(120000)]

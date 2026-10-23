@@ -1,7 +1,7 @@
 {
   "name": "Desync.Flow.PlayTests",
   "rootNamespace": "Desync.Flow.Tests",
-  "references": ["Desync.Core","Desync.Player","Desync.Flow","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "references": ["Desync.Core","Desync.Player","Desync.Flow","Unity.InputSystem","UnityEngine.TestRunner","UnityEditor.TestRunner"],
   "overrideReferences": true,
   "precompiledReferences": ["nunit.framework.dll"],
   "defineConstraints": ["UNITY_INCLUDE_TESTS"],

@@ -53,7 +53,7 @@ namespace Desync.UI
             _jackIn.fontStyle = FontStyles.Bold; _jackIn.characterSpacing = 6f; UIKit.Stretch(_jackIn.rectTransform);
             _jackPanel = jb.rectTransform;
 
-            _meta = UIKit.Text(card.transform, "Meta", UIKit.Hud, 30, UIKit.Dim, TextAlignmentOptions.Center, "~8 min · 6 rooms");
+            _meta = UIKit.Text(card.transform, "Meta", UIKit.Hud, 30, UIKit.Dim, TextAlignmentOptions.Center, "~8 min · 6 rooms · CLICK, SPACE OR PAD START");
             _meta.characterSpacing = 4f; UIKit.Place(_meta.rectTransform, Anc.C, new Vector2(0, -272), new Vector2(900, 40));
 
             var sl = UIKit.Text(card.transform, "SensLabel", UIKit.Hud, 26, UIKit.Dim, TextAlignmentOptions.Right, "SENSITIVITY");
@@ -133,6 +133,7 @@ namespace Desync.UI
         {
             if (_started) return;
             FreeCursor();
+            if (GameInput.Flip.WasPressedThisFrame() || UIKit.PadConfirm) { Start0(); return; }   // Space / pad South / pad Start (click path stays)
             Orbit(dt);
             _flipT -= dt;
             if (_flipT <= 0f)

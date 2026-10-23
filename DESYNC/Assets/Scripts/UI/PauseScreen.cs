@@ -89,7 +89,7 @@ namespace Desync.UI
         {
             base.Show();
             _head.Reveal(lockLost ? "CLICK TO RESUME" : "PAUSED", 0.25f);
-            _sub.SetText(lockLost ? "POINTER RELEASED · CLICK ANYWHERE TO RE-ENTER" : "SESSION SUSPENDED");
+            _sub.SetText(lockLost ? "POINTER RELEASED · CLICK / START / A TO RE-ENTER" : "SESSION SUSPENDED · START / A TO RESUME");
             _sub.color = lockLost ? UIKit.Magenta : UIKit.Dim;
             _head.SetColor(lockLost ? UIKit.Magenta : UIKit.Paper);
             _sens.SetValueWithoutNotify(Settings.Sensitivity); _sensVal.SetText("{0:0.00}", Settings.Sensitivity);

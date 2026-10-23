@@ -50,8 +50,8 @@ namespace Desync.UI
             for (int i = 0; i < N; i++)
             {
                 float par = cfg.parTime != null && i < cfg.parTime.Length ? cfg.parTime[i] : 0f;
-                var r = GameState.Results != null && i < GameState.Results.Length ? GameState.Results[i] : default;
-                _info[i].SetText(r.grade != 0 ? "PAR {0:0}s · BEST " + r.grade : "PAR {0:0}s", par);
+                string best = UIKit.BestLabel(i);
+                _info[i].SetText(best != null ? "PAR {0:0}s · " + best : "PAR {0:0}s", par);
             }
             UIKit.Pop(ref _pop, _panel, 0.9f, 0.22f);
             if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;   // buttons need a free pointer

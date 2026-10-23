@@ -12,11 +12,11 @@ namespace Desync.UI
 
         GlitchLabel _head;
         TMP_Text _intro, _total, _credits;
-        readonly TMP_Text[] _letter = new TMP_Text[N], _info = new TMP_Text[N];
+        readonly TMP_Text[] _letter = new TMP_Text[N], _info = new TMP_Text[N], _best = new TMP_Text[N];
         readonly RectTransform[] _cell = new RectTransform[N];
         readonly Image[] _cellFrame = new Image[N];
         RectTransform _creditsRt, _view; float _scroll, _creditsH; UIButton _again; Tween _pulse;
-        float _introChars; int _introShown, _introLen; float _introDelay;
+        float _introChars; int _introShown, _introLen; float _introDelay, _armT;
         const float ScrollSpeed = 42f;
 
         protected override void Create()
@@ -31,7 +31,7 @@ namespace Desync.UI
             _intro.textWrappingMode = TextWrappingModes.Normal;
             UIKit.Place(_intro.rectTransform, Anc.T, new Vector2(lx, -170), new Vector2(920, 130));
 
-            const float w = 300f, h = 190f, g = 20f;
+            const float w = 300f, h = 220f, g = 20f;
             var cfg = GameConfig.I;
             for (int i = 0; i < N; i++)
             {
@@ -43,7 +43,9 @@ namespace Desync.UI
                 var code = UIKit.Text(cell.transform, "Code", UIKit.Hud, 24, UIKit.Dim, TextAlignmentOptions.Center, "R" + (i + 1).ToString("00") + " · " + n); code.characterSpacing = 4f;
                 UIKit.Place(code.rectTransform, Anc.T, new Vector2(0, -10), new Vector2(w - 10, 30));
                 _letter[i] = UIKit.Text(cell.transform, "Grade", UIKit.Title, 112, UIKit.Dim, TextAlignmentOptions.Center, "-"); _letter[i].fontStyle = FontStyles.Bold;
-                UIKit.Place(_letter[i].rectTransform, Anc.C, new Vector2(0, -2), new Vector2(w, 130));
+                UIKit.Place(_letter[i].rectTransform, Anc.C, new Vector2(0, 6), new Vector2(w, 130));
+                _best[i] = UIKit.Text(cell.transform, "Best", UIKit.Hud, 22, UIKit.Cyan, TextAlignmentOptions.Center);
+                UIKit.Place(_best[i].rectTransform, Anc.B, new Vector2(0, 38), new Vector2(w - 10, 28));
                 _info[i] = UIKit.Text(cell.transform, "Info", UIKit.Hud, 22, UIKit.Paper, TextAlignmentOptions.Center);
                 UIKit.Place(_info[i].rectTransform, Anc.B, new Vector2(0, 10), new Vector2(w - 10, 28));
             }
@@ -72,6 +74,7 @@ namespace Desync.UI
             _head.Reveal("RUN REPORT", 0.7f);
             string line = cfg.introLines != null && cfg.introLines.Length > 2 ? cfg.introLines[2] : "";
             _intro.SetText(UIKit.Safe(line, UIKit.Term)); _intro.maxVisibleCharacters = 0; _introLen = line.Length; _introChars = 0; _introShown = 0; _introDelay = 0.8f;
+            _armT = 1.5f;   // pad PLAY AGAIN stays disarmed so a button still being mashed at the finale can't skip the report
 
             float total = 0f; int played = 0, traces = 0, flips = 0;
             var res = GameState.Results;
@@ -89,6 +92,7 @@ namespace Desync.UI
                     _info[i].SetText("{0:0}.{1:0}s · {2:0} TRACE", tenth / 10, tenth % 10, r.traces);
                 }
                 else _info[i].SetText("NOT PLAYED");
+                _best[i].SetText(UIKit.BestLabel(i) ?? "");   // saved best clear, shown even for rooms skipped this run
                 _cell[i].localScale = Vector3.zero;
                 Tween.Scale(_cell[i], 0f, 1f, 0.35f, Ease.OutBack, startDelay: 0.3f + i * 0.12f, useUnscaledTime: true);
             }
@@ -116,6 +120,8 @@ namespace Desync.UI
 
         public override void Tick(float dt)
         {
+            if (_armT > 0f) _armT -= dt;
+            else if (UIKit.PadConfirm) { GameEvents.StartRequested?.Invoke(0); return; }   // gamepad PLAY AGAIN (Start / South)
             if (_introDelay > 0f) _introDelay -= dt;
             else
             {

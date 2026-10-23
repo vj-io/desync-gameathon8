@@ -169,6 +169,23 @@ namespace Desync.UI
             slot = Tween.Alpha(g, to, dur, Ease.OutQuad, startDelay: delay, useUnscaledTime: true);
         }
 
+        // ---------------------------------------------------------------- gamepad + local bests
+        /// Gamepad Start or South pressed this frame (the title / ending "go" button; Esc stays inert there).
+        public static bool PadConfirm
+        {
+            get { var p = UnityEngine.InputSystem.Gamepad.current; return p != null && (p.startButton.wasPressedThisFrame || p.buttonSouth.wasPressedThisFrame); }
+        }
+
+        /// Saved best clear of a room as "BEST 0:42 A", or null. Flow writes PlayerPrefs "bestT{room}" (seconds) + "bestG{room}" (grade char).
+        /// Allocates: call on Show, never per frame.
+        public static string BestLabel(int room)
+        {
+            int g = PlayerPrefs.GetInt("bestG" + room, 0);
+            if (g == 0) return null;
+            int s = (int)PlayerPrefs.GetFloat("bestT" + room, 0f);
+            return "BEST " + (s / 60) + ":" + (s % 60).ToString("00") + " " + (char)g;
+        }
+
         // ---------------------------------------------------------------- grades
         public static Color GradeColor(char g)
         {

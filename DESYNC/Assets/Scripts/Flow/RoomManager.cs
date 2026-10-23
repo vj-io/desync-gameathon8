@@ -219,6 +219,7 @@ namespace Desync.Flow
             };
             r.grade = Grade(r.time, r.traces, r.flips, cfg.parTime[i], cfg.parFlips[i]);
             GameState.Results[i] = r;
+            BestTimes.Record(r);
             return r;
         }
 

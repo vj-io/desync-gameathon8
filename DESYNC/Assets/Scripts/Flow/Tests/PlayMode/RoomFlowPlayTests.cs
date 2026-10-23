@@ -3,6 +3,8 @@ using System.Collections;
 using Desync.Player;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -13,10 +15,13 @@ namespace Desync.Flow.Tests
     {
         Scene scene;
         GameObject player;
+        bool hadBest; float oldBestT; int oldBestG;   // grading a room writes the real PlayerPrefs best: keep the developer's own
 
         [UnitySetUp]
         public IEnumerator SetUp()
         {
+            hadBest = PlayerPrefs.HasKey("bestG0"); oldBestT = PlayerPrefs.GetFloat("bestT0"); oldBestG = PlayerPrefs.GetInt("bestG0");
+            PlayerPrefs.DeleteKey("bestT0"); PlayerPrefs.DeleteKey("bestG0");
             scene = SceneManager.CreateScene("DesyncFlowTest");
             SceneManager.SetActiveScene(scene);
             Box(GameLayers.Floor, new Vector3(0f, -0.5f, 0f), new Vector3(40f, 1f, 40f));
@@ -34,6 +39,9 @@ namespace Desync.Flow.Tests
         public IEnumerator TearDown()
         {
             GameState.God = false;
+            PlayerPrefs.DeleteKey("bestT0"); PlayerPrefs.DeleteKey("bestG0");
+            if (hadBest) { PlayerPrefs.SetFloat("bestT0", oldBestT); PlayerPrefs.SetInt("bestG0", oldBestG); }
+            PlayerPrefs.Save();   // Record saved to disk: the cleanup must too
             yield return SceneManager.UnloadSceneAsync(scene);
             RoomManager.I.Activate();   // room gone: back to the non-room state, cancels pending scene loads
             Time.timeScale = 1f;
@@ -92,6 +100,43 @@ namespace Desync.Flow.Tests
         }
 
         [UnityTest]
+        public IEnumerator GamepadStartPausesAndStartOrSouthResumes_WithoutAFlip()
+        {
+            var bg = InputSystem.settings.backgroundBehavior;
+            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;   // batchmode has no focus
+            var pad = InputSystem.AddDevice<Gamepad>();
+            IEnumerator Tap(GamepadButton b)
+            {
+                InputSystem.QueueStateEvent(pad, new GamepadState(b));
+                yield return null; yield return null;
+                InputSystem.QueueStateEvent(pad, new GamepadState());
+                yield return null; yield return null;
+            }
+            try
+            {
+                Assert.IsFalse(GameState.Paused);
+                yield return Tap(GamepadButton.Start);
+                Assert.IsTrue(GameState.Paused, "pad Start pauses");
+                yield return Tap(GamepadButton.Start);
+                Assert.IsFalse(GameState.Paused, "pad Start resumes (the only resume on WebGL, where the browser eats Esc)");
+                yield return Tap(GamepadButton.Start);
+                Assert.IsTrue(GameState.Paused);
+                yield return Tap(GamepadButton.South);
+                Assert.IsFalse(GameState.Paused, "pad South resumes from the pause menu");
+                Assert.AreEqual(0, GameState.Flips, "the resuming South press must not also flip");
+                Assert.IsFalse(LayerState.InSource);
+                yield return Tap(GamepadButton.South);
+                Assert.AreEqual(1, GameState.Flips, "South flips again once running");
+            }
+            finally
+            {
+                InputSystem.settings.backgroundBehavior = bg;
+                InputSystem.RemoveDevice(pad);
+                GameState.Paused = false; Time.timeScale = 1f;
+            }
+        }
+
+        [UnityTest]
         public IEnumerator MeltAt100KillsAfterDrip()
         {
             DeathCause? cause = null;
@@ -129,6 +174,7 @@ namespace Desync.Flow.Tests
                 Assert.IsTrue(cleared.HasValue);
                 Assert.AreEqual('S', cleared.Value.grade);
                 Assert.AreEqual('S', GameState.Results[0].grade);
+                Assert.AreEqual((int)'S', PlayerPrefs.GetInt("bestG0"), "a clear is saved as the local best");
                 Assert.IsTrue(GameState.Cinematic, "player frozen on the grade card");
             }
             finally
