@@ -32,7 +32,7 @@ namespace Desync.Flow
         public static int RoomsCleared => RunState.Grades.Count;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        [DllImport("__Internal")] static extern void Desync_AutoplayStatus(int state, int phase, int rooms, int won, int act);
+        [DllImport("__Internal")] static extern void Desync_AutoplayStatus(int state, int phase, int rooms, int won, int act, int seed);
 #endif
 
         Args args;
@@ -168,7 +168,7 @@ namespace Desync.Flow
             if (!force && Time.unscaledTime < nextPublish) return;
             nextPublish = Time.unscaledTime + PublishEvery;
 #if UNITY_WEBGL && !UNITY_EDITOR
-            Desync_AutoplayStatus((int)Status, (int)RunState.Phase, RoomsCleared, RunState.Won ? 1 : 0, RunState.Act);
+            Desync_AutoplayStatus((int)Status, (int)RunState.Phase, RoomsCleared, RunState.Won ? 1 : 0, RunState.Act, unchecked((int)RunState.Seed));
 #endif
         }
 

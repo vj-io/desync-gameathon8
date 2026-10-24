@@ -110,7 +110,7 @@ test('E2E-04 autoplay clears Act 1 on seed 2026', async ({ page }) => {
   const t0 = Date.now();
   await page.waitForFunction(() => ['done', 'failed'].includes(window.__DESYNC__.autoplay.state), null, { timeout: AUTOPLAY_BUDGET_MS, polling: 500 });
   const a = await page.evaluate(() => window.__DESYNC__.autoplay);
-  const seed = await page.evaluate(() => window.__DESYNC__.run.seed);
+  const seed = a.seed;   // the run seed (window.__DESYNC__.run.seed is the current room's derived seed)
   console.log(`autoplay ${a.state} after ${Math.round((Date.now() - t0) / 1000)} s: rooms=${a.rooms} won=${a.won} act=${a.act} seed=${seed}`);
   expect(a.state).toBe('done');
   expect(a.won).toBe(true);
