@@ -242,7 +242,8 @@ namespace Desync.UI
         void OnRoomReset() { _recap.Hide(); _hud.OnRoomReset(); }
 
         // ------------------------------------------------------------------ BREACH run (RunState / RunEvents)
-        void OnRunStart(RunMode m) { RunView.ResetRun(); HideRun(true); }
+        // Handler order is not guaranteed: the run manager may already have raised its first phase, so re-apply it.
+        void OnRunStart(RunMode m) { RunView.ResetRun(); HideRun(true); if (RunState.Phase != RunPhase.None) OnRunPhase(RunState.Phase); }
 
         /// Map / Draft / Market / Cooldown are full screens between rooms; Room hands back to the HUD; Over shows the run results.
         void OnRunPhase(RunPhase p)
