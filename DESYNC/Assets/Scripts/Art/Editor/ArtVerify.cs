@@ -265,6 +265,7 @@ namespace Desync.Art.Editor
                 Box(new Vector3(5.12f, 1.0f, z + 1f), new Vector3(0.04f, 1.8f, 0.05f), accentC, M("mat.world"));
             }
             Box(new Vector3(0.8f, 1.6f, 14f), new Vector3(0.8f, 3.2f, 0.8f), wall, M("mat.world"));   // pillar
+            Box(new Vector3(-0.6f, 1.6f, 14f), new Vector3(0.8f, 3.2f, 0.8f), WorldFlags.Solid(wall), M("mat.world"));   // 'X' pillar: solid in SOURCE too
             Quad(new Vector3(-2f, 1.7f, 20.8f), new Vector2(1.2f, 1.8f), Quaternion.identity, M("mat.poster"));
             Quad(new Vector3(2f, 1.7f, 20.8f), new Vector2(1.2f, 1.8f), Quaternion.identity, M("mat.poster"));
             Quad(new Vector3(0f, 0.01f, 2.5f), new Vector2(3.2f, 0.5f), Quaternion.Euler(90f, 0f, 0f), M("mat.decal"));
@@ -332,6 +333,10 @@ namespace Desync.Art.Editor
             Fx(); Shot(cam, "preview_source");
             Fx(pulse: 0.9f, wipe: 0.45f, wave: 0.35f); Shot(cam, "preview_source_flip");
             Fx(melt: 1f, drip: 0.6f); Shot(cam, "preview_source_drip");
+            Palette.Colorblind = true;   // colour-blind palette: blue / orange RENDER, yellow SOURCE, striped threats
+            Fx(); Shot(cam, "preview_source_cb");
+            Layer(false); Fx(); Shot(cam, "preview_render_cb");
+            Palette.Colorblind = false;
             Layer(false);
             Fx();
             AssetDatabase.SaveAssets();

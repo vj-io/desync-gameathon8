@@ -102,8 +102,9 @@ Shader "Desync/Panel"
                 float lum = dot(art, float3(0.3, 0.59, 0.11));
                 float bright = lerp(0.35, 0.2 + 1.6 * lum, step(_Mode, 0.5));
                 float corrupt = step(0.94, Hash12(cell + seed + floor(t * 3.0)));
-                float3 col = lerp(_SourceColor.rgb, _DangerColor.rgb, corrupt) * glyph * bright * _Glow
-                           + _SourceColor.rgb * border * 0.6;
+                float3 src = lerp(_SourceColor.rgb, _CbSource.rgb, _Colorblind);
+                float3 col = lerp(src, lerp(_DangerColor.rgb, _CbDanger.rgb, _Colorblind), corrupt) * glyph * bright * _Glow
+                           + src * border * 0.6;
                 col *= FogVisibility(i.seedFog.z);
                 return half4(col, 1.0);
             }

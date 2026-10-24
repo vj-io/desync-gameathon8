@@ -23,8 +23,8 @@ namespace Desync.UI
         EventSystem _es;
         TitleScreen _title; HudScreen _hud; PauseScreen _pause; LevelSelectScreen _levels; ResultsScreen _results; RecapScreen _recap; GoalsOverlay _goals;
         FinaleScreen _finale; EndingScreen _ending;
-        RunMapScreen _map; DraftScreen _draft; MarketScreen _market; CooldownScreen _cooldown; RunResultsScreen _runResults;
-        bool _built, _mapTab;
+        RunMapScreen _map; DraftScreen _draft; MarketScreen _market; CooldownScreen _cooldown; RunResultsScreen _runResults; DeepLayerScreen _deep;
+        bool _built, _mapTab, _rebuild, _cbShown;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Bootstrap()
@@ -54,6 +54,8 @@ namespace Desync.UI
 
         void BuildCanvas()
         {
+            UIKit.ApplyPalette();
+            _cbShown = Desync.Art.Palette.Colorblind;
             var cgo = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             cgo.transform.SetParent(transform, false);
             Canvas = cgo.GetComponent<Canvas>();
@@ -78,10 +80,13 @@ namespace Desync.UI
             _cooldown = Make<CooldownScreen>("Cooldown");
             _map = Make<RunMapScreen>("RunMap");
             _runResults = Make<RunResultsScreen>("RunResults");
+            _deep = Make<DeepLayerScreen>("DeepLayer");
+            _title.OnDeep = () => _deep.Show();
             _pause = Make<PauseScreen>("Pause");
             _levels = Make<LevelSelectScreen>("LevelSelect");
 
-            var sfx = gameObject.AddComponent<AudioSource>();   // UI-local: results tally ticks (pitch per line)
+            var sfx = GetComponent<AudioSource>();   // UI-local: results tally ticks (pitch per line); kept across a palette rebuild
+            if (!sfx) sfx = gameObject.AddComponent<AudioSource>();
             sfx.playOnAwake = false; sfx.spatialBlend = 0f; sfx.ignoreListenerPause = true;
             _results.Init(sfx);
             _draft.Init(sfx);
@@ -134,12 +139,12 @@ namespace Desync.UI
             if (m == Mode.Room) _hud.Show(); else _hud.Hide();
             if (m != Mode.Room) { _pause.Hide(); _results.Hide(); _recap.Hide(); _goals.Hide(); _finale.Hide(); }
             if (m == Mode.Title || m == Mode.Ending) HideRun(true);
-            _levels.Hide();
+            _levels.Hide(); _deep.Hide();
         }
 
         void HideRun(bool all)
         {
-            _map.Hide(); _draft.Hide(); _market.Hide(); _cooldown.Hide(); _mapTab = false;
+            _map.Hide(); _draft.Hide(); _market.Hide(); _cooldown.Hide(); _deep.Hide(); _mapTab = false;
             if (all) _runResults.Hide();
         }
 
@@ -155,7 +160,13 @@ namespace Desync.UI
         void OnEnable()
         {
             if (I != this || !_built) return;
+            Subscribe();
+        }
+
+        void Subscribe()
+        {
             SceneManager.sceneLoaded += OnSceneLoaded;
+            GameEvents.SettingsChanged += OnSettingsChanged;
             GameEvents.StartRequested += OnStartRequested;
             GameEvents.Paused += OnPaused;
             GameEvents.LevelSelectToggled += OnLevels;
@@ -179,12 +190,20 @@ namespace Desync.UI
             RunEvents.RunEnded += OnRunEnded;
             RunEvents.StartRun += OnRunStart;
             Desync.Enemies.EnemyEvents.TrackerSpawned += _hud.OnTrackerSpawned;
+            Desync.Enemies.BossEvents.Phase += _hud.OnBossPhase;
+            Desync.Enemies.BossEvents.Ending += _hud.OnBossEnding;
         }
 
         void OnDisable()
         {
             if (I != this || !_built) return;
+            Unsubscribe();
+        }
+
+        void Unsubscribe()
+        {
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            GameEvents.SettingsChanged -= OnSettingsChanged;
             GameEvents.StartRequested -= OnStartRequested;
             GameEvents.Paused -= OnPaused;
             GameEvents.LevelSelectToggled -= OnLevels;
@@ -208,9 +227,39 @@ namespace Desync.UI
             RunEvents.RunEnded -= OnRunEnded;
             RunEvents.StartRun -= OnRunStart;
             Desync.Enemies.EnemyEvents.TrackerSpawned -= _hud.OnTrackerSpawned;
+            Desync.Enemies.BossEvents.Phase -= _hud.OnBossPhase;
+            Desync.Enemies.BossEvents.Ending -= _hud.OnBossEnding;
         }
 
         void OnStartRequested(int room) { _levels.Hide(); }
+
+        // ------------------------------------------------------------------ palette change: widgets copy their colours when built, so rebuild
+        void OnSettingsChanged()
+        {
+            Desync.Art.Palette.Refresh();   // the saved flag may have just been written; the post-FX controller may not have run yet
+            if (Desync.Art.Palette.Colorblind != _cbShown) _rebuild = true;   // done at the start of the next frame, not inside the click that raised this
+        }
+
+        /// Destroys and rebuilds the canvas in the current palette, then restores what was on screen (the pause menu is the only place the
+        /// palette changes, so: mode, HUD, pause). Allocates; runs only on a palette change.
+        internal void Rebuild()
+        {
+            _rebuild = false;
+            if (!_built) return;
+            bool pause = _pause.IsOn, lockLost = _pause.LockLost, run = RunView.Active && RunState.Phase != RunPhase.Room;
+            var phase = RunState.Phase;
+            Unsubscribe();
+            foreach (var p in new UIPanel[] { _title, _ending, _hud, _recap, _goals, _finale, _results, _draft, _market, _cooldown, _map, _runResults, _deep, _pause, _levels })
+                p.Hide();   // panels stop their own tweens in Hide
+            var old = Canvas.gameObject;
+            old.SetActive(false); Destroy(old);
+            _mapTab = false;
+            BuildCanvas();
+            Subscribe();
+            SetMode(Current, true);
+            if (run) OnRunPhase(phase);
+            if (pause) _pause.Show(lockLost);
+        }
 
         void OnLevels(bool on) { if (on) _levels.Show(); else _levels.Hide(); }
 
@@ -242,7 +291,8 @@ namespace Desync.UI
         void OnRoomReset() { _recap.Hide(); _hud.OnRoomReset(); }
 
         // ------------------------------------------------------------------ BREACH run (RunState / RunEvents)
-        void OnRunStart(RunMode m) { RunView.ResetRun(); HideRun(true); }
+        // Handler order is not guaranteed: the run manager may already have raised its first phase, so re-apply it.
+        void OnRunStart(RunMode m) { RunView.ResetRun(); HideRun(true); if (RunState.Phase != RunPhase.None && RunState.Phase != RunPhase.Over) OnRunPhase(RunState.Phase); }
 
         /// Map / Draft / Market / Cooldown are full screens between rooms; Room hands back to the HUD; Over shows the run results.
         void OnRunPhase(RunPhase p)
@@ -272,13 +322,17 @@ namespace Desync.UI
         }
 
         // ------------------------------------------------------------------ frame
-        void Update() { TickAll(Time.unscaledDeltaTime); }
+        void Update()
+        {
+            if (_rebuild) Rebuild();
+            TickAll(Time.unscaledDeltaTime);
+        }
 
         internal void TickAll(float dt)
         {
             switch (Current)
             {
-                case Mode.Title: _title.Tick(dt); break;
+                case Mode.Title: _title.Blocked = _deep.IsOn; _title.Tick(dt); break;
                 case Mode.Room:
                     if (GameState.Paused && !_pause.IsOn && !_levels.IsOn) OnPaused(true);   // missed the event / level select just closed
                     _hud.Tick(dt);
@@ -299,6 +353,7 @@ namespace Desync.UI
             if (_market.IsOn) _market.Tick(dt);
             if (_cooldown.IsOn) _cooldown.Tick(dt);
             if (_runResults.IsOn) _runResults.Tick(dt);
+            if (_deep.IsOn) _deep.Tick(dt);
         }
     }
 }

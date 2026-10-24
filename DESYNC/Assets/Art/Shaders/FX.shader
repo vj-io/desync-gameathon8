@@ -6,6 +6,8 @@
 //  _Band         (frequency, speed, amount, 0): rings travelling out from the pivot
 //  _Anim         (pulse speed, pulse amount, flicker, glitch slices)
 //  _Shape        (rim, wireframe mask, vertex colour weight, 0); wireframe needs a MeshPrep'd mesh, else no-op
+//  _ZTest        depth test (4 = LEqual, the default; 8 = Always draws the mesh through walls: the Sysadmin Key cone variants)
+//  _CbHue        colour-blind palette hue of _BaseColor: 0 keep, 1 threat (danger colour), 2 SOURCE (yellow); global _Colorblind switches it on
 Shader "Desync/FX"
 {
     Properties
@@ -19,6 +21,8 @@ Shader "Desync/FX"
         _Anim ("Anim (pulse speed, pulse amount, flicker, glitch)", Vector) = (0, 0, 0, 0)
         _Shape ("Shape (rim, wire, vertex colour, 0)", Vector) = (0, 0, 1, 0)
         _Scroll ("UV scroll (xy)", Vector) = (0, 0, 0, 0)
+        [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest ("ZTest", Float) = 4
+        _CbHue ("Colour-blind hue (0 keep, 1 threat, 2 source)", Float) = 0
     }
 
     SubShader
@@ -31,6 +35,7 @@ Shader "Desync/FX"
             Tags { "LightMode" = "UniversalForward" }
             Blend One One
             ZWrite Off
+            ZTest [_ZTest]
             Cull Off
 
             HLSLPROGRAM
@@ -54,6 +59,8 @@ Shader "Desync/FX"
                 float4 _Anim;
                 float4 _Shape;
                 float4 _Scroll;
+                float _ZTest;
+                float _CbHue;
             CBUFFER_END
 
             float _Layer;   // global, LayerState: 0 RENDER, 1 SOURCE
@@ -122,7 +129,9 @@ Shader "Desync/FX"
                 shape *= lerp(1.0, wire, _Shape.y);
 
                 half4 vc = lerp(half4(1, 1, 1, 1), i.color, _Shape.z);
-                float3 tint = lerp(_BaseColor.rgb, _SourceColor.rgb, _Layer * _SourceColor.a);
+                float3 baseCol = lerp(_BaseColor.rgb, _CbHue > 1.5 ? _CbSource.rgb : _CbDanger.rgb, _Colorblind * step(0.5, _CbHue));
+                float3 srcCol = lerp(_SourceColor.rgb, _CbSource.rgb, _Colorblind);
+                float3 tint = lerp(baseCol, srcCol, _Layer * _SourceColor.a);
                 float3 col = tint * vc.rgb * (vc.a * mask * fade * band * pulse * flicker * glitch * shape * _Intensity);
                 col *= FogVisibility(i.uvFog.z);   // additive: fog fades to black
                 return half4(max(col, 0.0), 1.0);

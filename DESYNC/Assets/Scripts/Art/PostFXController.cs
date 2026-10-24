@@ -78,7 +78,7 @@ namespace Desync.Art
 
         void OnDestroy() { if (_i == this) _i = null; }
 
-        void OnSettings() { _reduceFx = Settings.ReduceFx; _calm = Settings.ReduceFlashes || _reduceFx; }
+        void OnSettings() { _reduceFx = Settings.ReduceFx; _calm = Settings.ReduceFlashes || _reduceFx; Palette.Refresh(); }
         void OnScene(Scene s, LoadSceneMode m) { ClearRecap(); OnLayer(LayerState.InSource); }
         void OnRoomReset() { _rebootHold = 0f; ClearRecap(); }
 

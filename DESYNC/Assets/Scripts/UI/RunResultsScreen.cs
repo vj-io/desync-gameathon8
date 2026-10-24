@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
+using Desync.Content;
 using Desync.Flow;
 using PrimeTween;
 using TMPro;
@@ -63,7 +65,7 @@ namespace Desync.UI
             _head.Reveal(RunState.Won ? "BREACH COMPLETE" : "RUN OVER", 0.5f);
             _head.SetColor(RunState.Won ? UIKit.Green : UIKit.Paper);
             int mode = (int)RunState.Mode;
-            _sub.SetText((mode >= 0 && mode < RunView.ModeNames.Length ? RunView.ModeNames[mode] : "") + " · SEED " + RunState.Seed);
+            _sub.SetText((mode >= 0 && mode < RunView.ModeNames.Length ? RunView.ModeNames[mode] : "") + (DeepRun.Level > 0 ? " · DEEP LAYER " + DeepRun.Level : "") + " · SEED " + RunState.Seed);
             _frags = RunState.Fragments;
 
             var cur = RunView.Node(RunState.NodeId);
@@ -107,7 +109,11 @@ namespace Desync.UI
         {
             switch (kind)
             {
-                case 0: _acted = true; RunView.Start(RunState.Mode); break;
+                case 0:   // a Deep Layer run restarts at the same level and picks
+                    _acted = true;
+                    if (DeepRun.Level > 0) { int level = DeepRun.Level; var picks = new List<MutatorPick>(DeepRun.Picks); RunView.ResetRun(); DeepRun.StartRequested?.Invoke(level, picks); }
+                    else RunView.Start(RunState.Mode);
+                    break;
                 case 1: _acted = true; GameEvents.QuitRequested?.Invoke(); break;
                 default: GameEvents.CopyRequested?.Invoke(_share ?? ""); _copyLabel.SetText("[C] COPIED"); _copiedT = 1.5f; break;
             }

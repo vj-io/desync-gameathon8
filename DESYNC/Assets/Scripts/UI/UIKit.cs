@@ -74,12 +74,18 @@ namespace Desync.UI
         public static bool Shake { get { Poll(); return _shake; } }
         public static void RefreshSettings() { _pollAt = 0f; Poll(); }
 
+        /// The four hues from the saved palette (authored colours, or the colour-blind set). Init calls it; after a palette change the
+        /// UIManager calls it and rebuilds every screen, because widgets copy their colours when they are built.
+        public static void ApplyPalette()
+        {
+            Cyan = Desync.Art.Palette.Cyan; Magenta = Desync.Art.Palette.Magenta; Green = Desync.Art.Palette.Green; Danger = Desync.Art.Palette.Danger;
+        }
+
         public static void Init()
         {
             if (_init && White) return;
             _init = true;
-            var c = GameConfig.I;
-            Cyan = c.cyan; Magenta = c.magenta; Green = c.green; Danger = c.danger;
+            ApplyPalette();
             Hud = AssetLib.Get<TMP_FontAsset>("font.hud"); if (!Hud) Hud = TMP_Settings.GetFontAsset();
             Term = AssetLib.Get<TMP_FontAsset>("font.term"); if (!Term) Term = Hud;
             Title = AssetLib.Get<TMP_FontAsset>("font.title"); if (!Title) Title = Hud;

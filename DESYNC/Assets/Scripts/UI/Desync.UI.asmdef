@@ -3,6 +3,7 @@
   "rootNamespace": "Desync.UI",
   "references": [
     "Desync.Core",
+    "Desync.Art",
     "Desync.Rules",
     "Desync.Net",
     "Unity.TextMeshPro",

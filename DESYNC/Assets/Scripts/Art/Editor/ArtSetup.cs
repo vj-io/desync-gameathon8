@@ -61,9 +61,14 @@ namespace Desync.Art.Editor
                     m.SetVector("_EdgeGlow", edgeGlow);
                     m.SetVector("_Anim", anim);
                 });
-            Put("mat.drone", Glow("Drone", new Color(0.16f, 0.16f, 0.24f), 1f, A(magenta, 1.1f), 2.5f, magenta, new Vector4(1.6f, 1.1f, 6f, 0.4f), Vector4.zero));
+            // _Hazard marks threat bodies: the colour-blind palette gives them the danger hue and moving stripes (Palette.cs).
+            var drone = Glow("Drone", new Color(0.16f, 0.16f, 0.24f), 1f, A(magenta, 1.1f), 2.5f, magenta, new Vector4(1.6f, 1.1f, 6f, 0.4f), Vector4.zero);
+            var ice = Glow("Ice", new Color(0.3f, 0.02f, 0.05f), 0f, A(danger, 2.4f), 1.8f, new Color(1f, 0.45f, 0.5f), new Vector4(2f, 1.2f, 6f, 0.5f), new Vector4(11f, 0.15f, 0.3f, 0f));
+            if (drone) drone.SetFloat("_Hazard", 1f);
+            if (ice) ice.SetFloat("_Hazard", 1f);
+            Put("mat.drone", drone);
             Put("mat.hijacked", Glow("Hijacked", new Color(0f, 0.2f, 0.25f), 0.5f, A(cyan, 1.8f), 2f, cyan, new Vector4(2f, 1.3f, 7f, 0.5f), new Vector4(6f, 0.12f, 0f, 0f)));
-            Put("mat.ice", Glow("Ice", new Color(0.3f, 0.02f, 0.05f), 0f, A(danger, 2.4f), 1.8f, new Color(1f, 0.45f, 0.5f), new Vector4(2f, 1.2f, 6f, 0.5f), new Vector4(11f, 0.15f, 0.3f, 0f)));
+            Put("mat.ice", ice);
 
             // --- additive effects (one shader) -------------------------------------------------------------------
             Material Fx(string file, Color col, float intensity, Color source, float fade, Vector4 band, Vector4 anim, Vector4 shape, Texture mask = null) =>
@@ -80,12 +85,27 @@ namespace Desync.Art.Editor
                 });
             var none = Src(0f);
             // Cones: ENEMIES' cone mesh fades apex -> rim in vertex alpha (any range), so the pivot fade stays off.
-            Put("mat.cone", Fx("Cone", new Color(1f, 0.55f, 0.9f), 0.32f, none, 0f, new Vector4(5f, 4f, 0.18f, 0f), Vector4.zero, new Vector4(0.35f, 0f, 1f, 0f)));
-            Put("mat.cone.trace", Fx("ConeTrace", danger, 0.6f, none, 0f, new Vector4(7f, 14f, 0.35f, 0f), new Vector4(18f, 0.25f, 0.2f, 0f), new Vector4(0.35f, 0f, 1f, 0f)));
-            Put("mat.ice.trail", Fx("IceTrail", danger, 1.4f, none, 0f, Vector4.zero, new Vector4(0f, 0f, 0.2f, 0f), new Vector4(0f, 0f, 1f, 0f)));
+            var cone = Fx("Cone", new Color(1f, 0.55f, 0.9f), 0.32f, none, 0f, new Vector4(5f, 4f, 0.18f, 0f), Vector4.zero, new Vector4(0.35f, 0f, 1f, 0f));
+            var coneTrace = Fx("ConeTrace", danger, 0.6f, none, 0f, new Vector4(7f, 14f, 0.35f, 0f), new Vector4(18f, 0.25f, 0.2f, 0f), new Vector4(0.35f, 0f, 1f, 0f));
+            var iceTrail = Fx("IceTrail", danger, 1.4f, none, 0f, Vector4.zero, new Vector4(0f, 0f, 0.2f, 0f), new Vector4(0f, 0f, 1f, 0f));
+            var portalLocked = Fx("PortalLocked", new Color(1f, 0.1f, 0.3f), 0.55f, none, 0f, new Vector4(4f, 1.5f, 0.3f, 0f), new Vector4(1.5f, 0.15f, 0.3f, 0.3f), new Vector4(0.6f, 0f, 0f, 0f));
+            foreach (var t in new[] { coneTrace, iceTrail, portalLocked }) if (t) t.SetFloat("_CbHue", 1f);   // threat hue: danger colour in the colour-blind palette
+            Put("mat.cone", cone);
+            Put("mat.cone.trace", coneTrace);
+            Put("mat.ice.trail", iceTrail);
             Put("mat.portal", Fx("Portal", cyan, 1.3f, Src(1f), 0f, new Vector4(7f, 6f, 0.4f, 0f), new Vector4(4f, 0.25f, 0f, 0f), new Vector4(0.6f, 0f, 0f, 0f)));
-            Put("mat.portal.locked", Fx("PortalLocked", new Color(1f, 0.1f, 0.3f), 0.55f, none, 0f, new Vector4(4f, 1.5f, 0.3f, 0f), new Vector4(1.5f, 0.15f, 0.3f, 0.3f), new Vector4(0.6f, 0f, 0f, 0f)));
-            Put("mat.architect", Fx("Architect", green, 1.6f, none, 0f, new Vector4(3f, 2f, 0.35f, 0f), new Vector4(0f, 0f, 0.25f, 0f), new Vector4(0f, 0.92f, 1f, 0f)));
+            Put("mat.portal.locked", portalLocked);
+            // Sysadmin Key: the same cones with the depth test on Always, so they draw through walls (Palette.cs ConeMats picks them).
+            Material Xray(string file, Material from) => !from ? null : Mat(file, "Desync/FX", m =>
+            {
+                m.CopyPropertiesFromMaterial(from);
+                m.SetFloat("_ZTest", (float)UnityEngine.Rendering.CompareFunction.Always);
+            });
+            Put("mat.cone.xray", Xray("ConeXray", cone));
+            Put("mat.cone.trace.xray", Xray("ConeTraceXray", coneTrace));
+            var architect = Fx("Architect", green, 1.6f, none, 0f, new Vector4(3f, 2f, 0.35f, 0f), new Vector4(0f, 0f, 0.25f, 0f), new Vector4(0f, 0.92f, 1f, 0f));
+            if (architect) architect.SetFloat("_CbHue", 2f);   // a SOURCE-green body: yellow in the colour-blind palette
+            Put("mat.architect", architect);
             Put("mat.strings", Fx("Strings", new Color(1f, 0.55f, 0.95f), 1.2f, none, 0f, new Vector4(2f, 6f, 0.5f, 0f), new Vector4(0f, 0f, 0.4f, 0f), new Vector4(0f, 0f, 1f, 0f)));
             Put("mat.lkp", Fx("LKP", cyan, 1.3f, none, 0f, new Vector4(10f, 8f, 0.3f, 0f), new Vector4(8f, 0.45f, 0f, 0f), new Vector4(0.5f, 0f, 1f, 0f)));
             Put("mat.glitch", Fx("Glitch", magenta, 1f, Src(0.6f), 0f, new Vector4(12f, 10f, 0.5f, 0f), new Vector4(0f, 0f, 0.5f, 1f), new Vector4(0.5f, 0f, 1f, 0f)));

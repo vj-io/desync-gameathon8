@@ -20,7 +20,9 @@ namespace Desync.UI
 
         UIButton[] _node; TMP_Text[] _cap; Image[] _ring; RunNode[] _slot;
         Image[] _edge;
-        TMP_Text _head, _sub, _preview, _loadout, _stats, _keys;
+        TMP_Text _head, _sub, _preview, _stats, _keys;
+        // loadout rows: archetype bar + name + live state + the effect text (the exploit tooltip), rarity as the border pattern
+        RectTransform[] _lRow; Image[] _lBar, _lBorder; TMP_Text[] _lName, _lState, _lDesc; string[] _lWhen; bool[] _lLit; readonly Exploit[] _lShown = new Exploit[Loadout.MaxHeld];
         RectTransform _panel; Tween _pop;
 
         readonly List<string> _choices = new List<string>();
@@ -69,10 +71,26 @@ namespace Desync.UI
             // right column: loadout + run stats
             var lh = UIKit.Text(panel.transform, "LoadoutHead", UIKit.Hud, 26, UIKit.Cyan, TextAlignmentOptions.Left, "LOADOUT"); lh.characterSpacing = 6f;
             UIKit.Place(lh.rectTransform, Anc.TR, new Vector2(-48, -150), new Vector2(520, 34));
-            _loadout = UIKit.Text(panel.transform, "Loadout", UIKit.Hud, 28, UIKit.Paper, TextAlignmentOptions.TopLeft); _loadout.lineSpacing = 12f;
-            UIKit.Place(_loadout.rectTransform, Anc.TR, new Vector2(-48, -194), new Vector2(520, 300));
+            int n = Loadout.MaxHeld;
+            _lRow = new RectTransform[n]; _lBar = new Image[n]; _lBorder = new Image[n]; _lName = new TMP_Text[n]; _lState = new TMP_Text[n]; _lDesc = new TMP_Text[n];
+            _lWhen = new string[n]; _lLit = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                var row = UIKit.Place(UIKit.Obj(panel.transform, "LoadoutRow" + i), Anc.TR, new Vector2(-48, -194 - i * 96), new Vector2(520, 90)); _lRow[i] = row;
+                row.pivot = new Vector2(1f, 1f); row.anchoredPosition = new Vector2(-48, -194 - i * 96);
+                var bg = UIKit.Img(row, "Bg", new Color(UIKit.Ink.r, UIKit.Ink.g, UIKit.Ink.b, 0.6f)); UIKit.Stretch(bg.rectTransform);
+                _lBorder[i] = UIKit.Img(row, "Border", UIKit.Cyan); UIKit.Stretch(_lBorder[i].rectTransform);
+                _lBar[i] = UIKit.Img(row, "Bar", UIKit.Cyan); UIKit.Place(_lBar[i].rectTransform, Anc.TL, Vector2.zero, new Vector2(6, 90));
+                _lName[i] = UIKit.Text(row, "Name", UIKit.Hud, 26, UIKit.Paper, TextAlignmentOptions.Left); _lName[i].fontStyle = FontStyles.Bold; _lName[i].richText = false;
+                UIKit.Place(_lName[i].rectTransform, Anc.TL, new Vector2(20, -5), new Vector2(330, 32));
+                _lState[i] = UIKit.Text(row, "State", UIKit.Hud, 20, UIKit.Dim, TextAlignmentOptions.Right); _lState[i].characterSpacing = 3f; _lState[i].richText = false;
+                UIKit.Place(_lState[i].rectTransform, Anc.TR, new Vector2(-12, -9), new Vector2(170, 28));
+                _lDesc[i] = UIKit.Text(row, "Desc", UIKit.Term, 26, UIKit.Paper, TextAlignmentOptions.TopLeft); _lDesc[i].richText = false;
+                _lDesc[i].textWrappingMode = TextWrappingModes.Normal;
+                UIKit.Place(_lDesc[i].rectTransform, Anc.TL, new Vector2(20, -38), new Vector2(490, 50));
+            }
             _stats = UIKit.Text(panel.transform, "Stats", UIKit.Hud, 28, UIKit.Paper, TextAlignmentOptions.TopLeft); _stats.lineSpacing = 12f;
-            UIKit.Place(_stats.rectTransform, Anc.TR, new Vector2(-48, -520), new Vector2(520, 220));
+            UIKit.Place(_stats.rectTransform, Anc.BR, new Vector2(-48, 64), new Vector2(520, 200));
 
             // preview (bottom-left)
             var pv = UIKit.Box(panel.transform, "Preview", new Color(UIKit.Cyan.r, UIKit.Cyan.g, UIKit.Cyan.b, 0.5f), 0.7f);
@@ -151,21 +169,8 @@ namespace Desync.UI
             }
             for (int i = e; i < MaxEdges; i++) _edge[i].gameObject.SetActive(false);
 
-            // loadout + stats
-            _sb.Clear();
-            var held = RunState.Held;
-            for (int i = 0; i < Loadout.MaxHeld; i++)
-            {
-                if (i < held.Count)
-                {
-                    var x = held[i];
-                    _sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGB(RunView.ArchColor(x.archetype))).Append('>')
-                       .Append(RunView.ArchGlyph[(int)x.archetype]).Append("</color> ").Append(x.name.ToUpperInvariant())
-                       .Append(" <alpha=#88>").Append(RunView.RarityName[(int)x.rarity]).Append("<alpha=#FF>\n");
-                }
-                else _sb.Append("<alpha=#55>· EMPTY SLOT<alpha=#FF>\n");
-            }
-            _loadout.SetText(UIKit.Safe(_sb.ToString(), UIKit.Hud));
+            // loadout rows + stats
+            LoadRows();
             _sb.Clear();
             _sb.Append("BACKUPS   ").Append(RunView.Backups(RunState.Backups)).Append('\n')
                .Append("CYCLES    ").Append(RunState.Cycles).Append('\n')
@@ -176,6 +181,44 @@ namespace Desync.UI
 
             SetFocus(0);
             if (_choices.Count == 0) Preview(cur);
+        }
+
+        /// Fills the five loadout rows from RunState.Held: name, rarity border, archetype bar, effect text (the tooltip) and the live
+        /// state. Allocates; runs when the map opens.
+        void LoadRows()
+        {
+            var held = RunState.Held;
+            for (int i = 0; i < _lRow.Length; i++)
+            {
+                var x = i < held.Count ? held[i] : null;
+                _lShown[i] = x; _lWhen[i] = null; _lLit[i] = false;
+                var c = x != null ? RunView.ArchColor(x.archetype) : UIKit.Dim;
+                _lBar[i].color = c; _lBorder[i].color = new Color(c.r, c.g, c.b, x != null ? 0.9f : 0.25f);
+                UIKit.SetBorder(_lBorder[i], x != null ? (int)x.rarity : 0, 1f);
+                _lName[i].SetText(x != null ? UIKit.Safe(RunView.ArchGlyph[(int)x.archetype] + " " + x.name.ToUpperInvariant(), UIKit.Hud) : "· EMPTY SLOT");
+                _lName[i].color = x != null ? UIKit.Paper : new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f);
+                _lDesc[i].SetText(x != null ? UIKit.Safe(x.desc, UIKit.Term) : "");
+                _lWhen[i] = x != null ? RunView.When(x) : null;
+                _lState[i].SetText(x == null ? "" : _lWhen[i] == null ? "PASSIVE" : "IDLE");
+                _lState[i].color = UIKit.Dim;
+            }
+        }
+
+        /// Live state of the conditional exploits (the condition grammar in Content: chain / melt / trace / layer), no allocation.
+        void TickLoadout()
+        {
+            var ctx = RunView.Live(0);
+            for (int i = 0; i < _lRow.Length; i++)
+            {
+                if (_lShown[i] == null) continue;
+                if (_lShown[i].rarity == Rarity.E) UIKit.AnimateBorder(_lBorder[i]);
+                if (_lWhen[i] == null) continue;
+                bool lit = Conditions.Eval(_lWhen[i], ctx);
+                if (lit == _lLit[i]) continue;
+                _lLit[i] = lit;
+                _lState[i].SetText(lit ? "ACTIVE" : "IDLE");
+                _lState[i].color = lit ? RunView.ArchColor(_lShown[i].archetype) : UIKit.Dim;
+            }
         }
 
         Vector2 NodePos(RunNode n) => n.type == NodeType.Boss
@@ -263,6 +306,7 @@ namespace Desync.UI
         public override void Tick(float dt)
         {
             _t += dt;
+            TickLoadout();
             for (int i = 0; i < _count; i++)   // lit choices breathe
             {
                 if (_slot[i] == null || !_choices.Contains(_slot[i].id)) continue;
