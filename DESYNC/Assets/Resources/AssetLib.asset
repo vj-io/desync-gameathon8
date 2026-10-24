@@ -161,3 +161,75 @@ MonoBehaviour:
     value: {fileID: 5249010053160886045, guid: 439ca22de8aea44f18d1419fd48e79a1, type: 3}
   - key: sfx.ice.hum
     value: {fileID: 8300000, guid: df645c9184ff14372aada2120f994275, type: 3}
+  - key: music.render.a2
+    value: {fileID: 8300000, guid: fab9059aa042144ec9f013a8f4c49761, type: 3}
+  - key: music.source.a2
+    value: {fileID: 8300000, guid: 907b706c688c14493b59d4e5317b8572, type: 3}
+  - key: music.render.lp.a2
+    value: {fileID: 8300000, guid: aa5a0a590b0cb48e8bf4c7de7c1924ba, type: 3}
+  - key: music.source.lp.a2
+    value: {fileID: 8300000, guid: 3953a12b6426145ec9086e4c61e6b52e, type: 3}
+  - key: music.render.a3
+    value: {fileID: 8300000, guid: 03ac70cd982744f0b96ee5e252026169, type: 3}
+  - key: music.source.a3
+    value: {fileID: 8300000, guid: 8e44ea51c46fd4c3ab5b776b20f39e9e, type: 3}
+  - key: music.render.lp.a3
+    value: {fileID: 8300000, guid: b70b2e461d61e4506bfc02c04d7192ac, type: 3}
+  - key: music.source.lp.a3
+    value: {fileID: 8300000, guid: b336143514bc44d799f38c40d46f5e7d, type: 3}
+  - key: music.tension
+    value: {fileID: 8300000, guid: ad415d514c36f42b9996b0e236b5b24c, type: 3}
+  - key: music.trace.a
+    value: {fileID: 8300000, guid: 969b48a1ad7bf42bc8d6ed093bff263c, type: 3}
+  - key: music.trace.b
+    value: {fileID: 8300000, guid: d370f00c9722f41179aec2814a32e0ca, type: 3}
+  - key: sfx.score.pop
+    value: {fileID: 8300000, guid: 5f83406317a80448ba5909a5a0d0a056, type: 3}
+  - key: sfx.redline
+    value: {fileID: 8300000, guid: 6a2903f0f9560405abb408cf5165cb77, type: 3}
+  - key: sfx.graze
+    value: {fileID: 8300000, guid: f48da5043a8f74297bcc89e0a272f024, type: 3}
+  - key: sfx.map.open
+    value: {fileID: 8300000, guid: 1417948a8ca1c43cd97ceee4c0491e52, type: 3}
+  - key: sfx.map.choose
+    value: {fileID: 8300000, guid: 3df592e4e6b9047e8bb9ec62c8f96fc3, type: 3}
+  - key: sfx.decrypt.tick
+    value: {fileID: 8300000, guid: e225c208787004e33b22e2b43abf22ec, type: 3}
+  - key: sfx.draft.pick
+    value: {fileID: 8300000, guid: c56467ee301fa4feb9f3c9f4dcee5ab6, type: 3}
+  - key: sfx.market.buy
+    value: {fileID: 8300000, guid: 29a180d23a5e542b4a84d915cbcdd9d9, type: 3}
+  - key: sfx.cooldown
+    value: {fileID: 8300000, guid: d92fd9459b5f7461f9840d7aee57defe, type: 3}
+  - key: sfx.tracker.sting
+    value: {fileID: 8300000, guid: c0d55c65e3df540c294e811df53e6f90, type: 3}
+  - key: sfx.auditor.p2
+    value: {fileID: 8300000, guid: 0741e35446428417c87695679d41cd0b, type: 3}
+  - key: sfx.auditor.p3
+    value: {fileID: 8300000, guid: 0eb89e54a48d642a39fb729bf8037482, type: 3}
+  - key: sfx.uplink.tick
+    value: {fileID: 8300000, guid: 962bde392adee480e8dc67030af11967, type: 3}
+  - key: sfx.lantern.hum
+    value: {fileID: 8300000, guid: 52d7c4e00461747edae5dac4514290fc, type: 3}
+  - key: sfx.sentinel.charge
+    value: {fileID: 8300000, guid: 3ee662000adee4b0ca59bd55edacb988, type: 3}
+  - key: sfx.sentinel.pulse
+    value: {fileID: 8300000, guid: d0ca82f330b4a40e68e28413cdea4ed8, type: 3}
+  - key: sfx.splitter.split
+    value: {fileID: 8300000, guid: cfa0d5cf71e394c5d8ab5228aa96eb93, type: 3}
+  - key: sfx.daemon.cross
+    value: {fileID: 8300000, guid: f23df16b5a6f44a05b128af917771dfa, type: 3}
+  - key: sfx.watcher.beam
+    value: {fileID: 8300000, guid: 363dbe6ca20e2402bbc5b9771e71dd5b, type: 3}
+  - key: sfx.alert.suspicious
+    value: {fileID: 8300000, guid: 984efbac026534179baa99117b2ddaf7, type: 3}
+  - key: sfx.alert.hunting
+    value: {fileID: 8300000, guid: 02a1c55b1ee1e48fab217d7648dae490, type: 3}
+  - key: sfx.alert.return
+    value: {fileID: 8300000, guid: 6f7fa7f6f4365449a9f0920787d4c9e9, type: 3}
+  - key: sfx.wall.swap
+    value: {fileID: 8300000, guid: 88eed5446850b4c5d9f4ccebc08fb7c5, type: 3}
+  - key: mat.cone.xray
+    value: {fileID: 2100000, guid: dcafd945c6a14478e80730ed62e50099, type: 2}
+  - key: mat.cone.trace.xray
+    value: {fileID: 2100000, guid: cad7b2a7ae3f84dd2ad84016b17258a2, type: 2}

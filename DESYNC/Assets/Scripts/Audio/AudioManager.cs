@@ -3,48 +3,33 @@ using UnityEngine;
 namespace Desync.Audio
 {
     /// Self-bootstrapping persistent audio director (CONTRACT: AfterSceneLoad + DontDestroyOnLoad, duplicate-safe).
+    /// Split by concern: this file = voices, loops and the core event handlers; AudioManager.Music.cs = adaptive music;
+    /// AudioManager.Cues.cs = scoring, run-flow, boss and enemy cues.
     ///
-    /// MUSIC. Four stems of one 120 BPM loop (RENDER, SOURCE, and a low-passed copy of each) play in lock-step; the mix is only
-    /// AudioSource volumes. WebGL has no AudioMixer snapshots / effects / filters ("Audio in Web": only group volume works), so:
-    ///   * "snapshot" = linear crossfade RENDER <-> SOURCE over GameConfig.stemCrossfade (the stems are the same music, so linear).
-    ///   * melt low-pass = crossfade towards the .lp stems from 50 % melt (full at 100 %).
-    ///   * hack duck = GameConfig.hackDuckDb; pause = music lowered, still playing.
-    /// SFX. Fixed pools, no allocation per call: 5 x 2D + 5 x 3D (linear rolloff 2-15 m) + heartbeat loop + ICE hum loop + 4 music = 16 voices max.
+    /// VOICES. At most 16 AudioSources sound at once (VoiceCap). Loops outrank one-shots and are never stolen: the 4 base music
+    /// stems, the 3 music layers (tension, TRACE a / b; they only play while audible), the heartbeat, the ICE hum and the Lantern
+    /// hum. Every other cue goes through one pool of 5 x 2D + 5 x 3D sources that is trimmed to whatever the loops leave free
+    /// (16 - loops), lowest priority and oldest first, so any mix of events stays inside the cap.
+    /// WebGL has no AudioMixer snapshots / effects / filters ("Audio in Web": only group volume works), so all mixing is
+    /// AudioSource volumes (see the music partial). Audio before the first user gesture is silent on the web (browser autoplay
+    /// policy); nothing here depends on it being audible.
     /// ICE hum: one looping 3D voice that follows GameState.NearestIce while GameState.IceAlive > 0 and the player is in SOURCE
     /// (linear rolloff 2-15 m like the other threat cues), faded in/out; so a live hunter is locatable by ear in first person.
-    /// Audio before the first user gesture is silent on the web (browser autoplay policy); nothing here depends on it being audible,
-    /// the loop simply starts sounding when the AudioContext resumes (all four stems resume together).
-    public sealed class AudioManager : MonoBehaviour
+    public sealed partial class AudioManager : MonoBehaviour
     {
         public static AudioManager I { get; private set; }
 
-        // ---- tuning (mix levels are by ear against the -1 dBFS-normalised clips)
-        const float MusicGain = 0.55f;
-        const float MeltLpStart = 50f;        // % melt where the low-passed stems start to blend in
-        const float PausedMusic = 0.35f;
-        const float StingMusic = 0.4f;        // music level under the finale sting
+        public const int VoiceCap = 16;
+
         const int Pool2D = 5, Pool3D = 5;
         const float HumGain = 0.5f, HumIn = 0.25f, HumOut = 0.5f;   // hum level, fade-in / fade-out seconds
-        const int DriftSamples = 1500;        // ~31 ms @ 48 kHz: re-sync a stem that drifted from stem 0
-        const float MusicWaitMax = 8f;        // start anyway if a stem has not finished loading by then
 
         // priorities for voice stealing (higher wins)
         const int PLow = 1, PMid = 4, PHigh = 8, PMax = 10;
 
-        enum Stem { Render, Source, RenderLp, SourceLp }
-
         AudioBank _bank;
-        readonly AudioSource[] _music = new AudioSource[4];
-        AudioSource _hb, _hum;
-        Pool _p2, _p3;
-
-        // music state
-        bool _musicOn;
-        float _wait, _drift;
-        float _layer, _layerTarget;           // 0 = RENDER, 1 = SOURCE (smoothed)
-        float _lp, _duck = 1f, _pause = 1f, _sting = 1f;
-        float _stingUntil;
-        bool _evPaused;
+        AudioSource _hb, _hum, _lantern;
+        Pool _pool;
 
         // sfx state
         bool _hbOn;
@@ -64,15 +49,9 @@ namespace Desync.Audio
         }
 
         // ---- test / debug hooks
-        public bool MusicPlaying => _musicOn;
-        public AudioSource MusicSource(int stem) => _music[stem];
         public AudioSource IceHum => _hum;
-        public int PlayingVoices()
-        {
-            int n = (_hb && _hb.isPlaying ? 1 : 0) + (_hum && _hum.isPlaying ? 1 : 0);
-            for (int i = 0; i < _music.Length; i++) if (_music[i] && _music[i].isPlaying) n++;
-            return n + _p2.Playing() + _p3.Playing();
-        }
+        public AudioSource LanternHum => _lantern;
+        public int PlayingVoices() => LoopVoices() + _pool.Playing();
 
         void Awake()
         {
@@ -85,33 +64,15 @@ namespace Desync.Audio
                 _bank = ScriptableObject.CreateInstance<AudioBank>();
             }
 
-            var clips = new[] { _bank.musicRender, _bank.musicSource, _bank.musicRenderLp, _bank.musicSourceLp };
-            for (int i = 0; i < 4; i++)
-            {
-                var s = NewSource("music." + (Stem)i, false);
-                s.clip = clips[i];
-                s.loop = true;
-                s.priority = 0;
-                s.ignoreListenerPause = true;
-                s.volume = 0f;
-                _music[i] = s;
-                if (clips[i] && clips[i].loadState == AudioDataLoadState.Unloaded) clips[i].LoadAudioData();
-            }
+            InitMusic();
 
             _hb = NewSource("heartbeat", false);
             _hb.clip = _bank.heartbeat;
             _hb.loop = true;
-            _hum = NewSource("ice.hum", true);
-            _hum.clip = _bank.iceHum;
-            _hum.loop = true;
-            _hum.rolloffMode = AudioRolloffMode.Linear;
-            _hum.minDistance = 2f;
-            _hum.maxDistance = 15f;
-            _hum.priority = 32;
-            _p2 = new Pool(transform, Pool2D, false);
-            _p3 = new Pool(transform, Pool3D, true);
+            _hum = NewLoop("ice.hum", _bank.iceHum);
+            _lantern = NewLoop("lantern.hum", _bank.lanternHum);
+            _pool = new Pool(transform, Pool2D, Pool3D);
 
-            _layer = _layerTarget = LayerState.InSource ? 1f : 0f;
             AudioListener.volume = Settings.Volume;
         }
 
@@ -124,6 +85,19 @@ namespace Desync.Audio
             s.spatialBlend = spatial ? 1f : 0f;
             s.dopplerLevel = 0f;
             s.bypassReverbZones = true;
+            return s;
+        }
+
+        /// A looping 3D voice (linear rolloff 2-15 m like the other threat cues).
+        AudioSource NewLoop(string name, AudioClip clip)
+        {
+            var s = NewSource(name, true);
+            s.clip = clip;
+            s.loop = true;
+            s.rolloffMode = AudioRolloffMode.Linear;
+            s.minDistance = 2f;
+            s.maxDistance = 15f;
+            s.priority = 32;
             return s;
         }
 
@@ -160,6 +134,7 @@ namespace Desync.Audio
             GameEvents.RestartRequested += OnUiClick;
             GameEvents.QuitRequested += OnUiClick;
             GameEvents.LevelSelectToggled += OnLevelSelect;
+            SubscribeCues();
         }
 
         void OnDisable()
@@ -195,6 +170,7 @@ namespace Desync.Audio
             GameEvents.RestartRequested -= OnUiClick;
             GameEvents.QuitRequested -= OnUiClick;
             GameEvents.LevelSelectToggled -= OnLevelSelect;
+            UnsubscribeCues();
         }
 
         void OnDestroy() { if (I == this) I = null; }
@@ -212,70 +188,33 @@ namespace Desync.Audio
             }
             UpdateHeartbeat(dt);
             UpdateIceHum(dt);
+            UpdateLanternHum(dt);
             UpdateGlitchBeeps();
+            UpdateUplinkTicks();
+            UpdateDecrypt(dt);
+            Trim();   // net: whatever the loops took this frame, the pooled cues fit in the rest
         }
 
-        void TryStartMusic(float dt)
+        // ------------------------------------------------------------------ voice budget
+        /// Loop voices currently sounding (music stems and layers, heartbeat, ICE hum, Lantern hum): never stolen.
+        int LoopVoices()
         {
-            _wait += dt;
-            bool any = false, ready = true;
-            for (int i = 0; i < 4; i++)
-            {
-                var c = _music[i].clip;
-                if (!c) continue;
-                any = true;
-                if (c.loadState == AudioDataLoadState.Unloaded) c.LoadAudioData();
-                if (c.loadState == AudioDataLoadState.Loading || c.loadState == AudioDataLoadState.Unloaded) ready = false;
-            }
-            if (!any) { _musicOn = true; return; }
-            if (!ready && _wait < MusicWaitMax) return;   // start all four in the same frame so they stay sample-locked
-            _layer = _layerTarget;
-            _lp = Smooth(Mathf.InverseLerp(MeltLpStart, 100f, GameState.Melt));
-            ApplyMusicVolumes();
-            for (int i = 0; i < 4; i++)
-                if (_music[i].clip && _music[i].clip.loadState == AudioDataLoadState.Loaded) { _music[i].timeSamples = 0; _music[i].Play(); }
-            _musicOn = true;
+            int n = (_hb && _hb.isPlaying ? 1 : 0) + (_hum && _hum.isPlaying ? 1 : 0) + (_lantern && _lantern.isPlaying ? 1 : 0);
+            for (int i = 0; i < _music.Length; i++) if (_music[i] && _music[i].isPlaying) n++;
+            return n;
         }
 
-        static float Smooth(float x) => x * x * (3f - 2f * x);
+        /// Pooled one-shots may use whatever the loops leave of the cap.
+        void Trim() => _pool.Trim(VoiceCap - LoopVoices());
 
-        void MixMusic(float dt)
+        /// Starts a loop voice and gives back the pooled voice it displaces when the cap is full.
+        void StartLoop(AudioSource s)
         {
-            var cfg = GameConfig.I;
-            _layer = Mathf.MoveTowards(_layer, _layerTarget, dt / Mathf.Max(0.01f, cfg.stemCrossfade));
-            _lp = Mathf.MoveTowards(_lp, Smooth(Mathf.InverseLerp(MeltLpStart, 100f, GameState.Melt)), dt * 1.5f);
-            _duck = Mathf.MoveTowards(_duck, GameState.InHack ? Mathf.Pow(10f, cfg.hackDuckDb / 20f) : 1f, dt * 6f);
-            _pause = Mathf.MoveTowards(_pause, GameState.Paused || _evPaused ? PausedMusic : 1f, dt * 4f);
-            _sting = Mathf.MoveTowards(_sting, Time.unscaledTime < _stingUntil ? StingMusic : 1f, dt * 2f);
-            ApplyMusicVolumes();
+            s.Play();
+            Trim();
         }
 
-        void ApplyMusicVolumes()
-        {
-            float g = MusicGain * _duck * _pause * _sting;
-            float r = 1f - _layer, s = _layer, d = 1f - _lp;
-            _music[(int)Stem.Render].volume = g * r * d;
-            _music[(int)Stem.Source].volume = g * s * d;
-            _music[(int)Stem.RenderLp].volume = g * r * _lp;
-            _music[(int)Stem.SourceLp].volume = g * s * _lp;
-        }
-
-        void CheckDrift()
-        {
-            var m0 = _music[0];
-            if (!m0.clip || !m0.isPlaying) return;
-            int len = m0.clip.samples, t0 = m0.timeSamples;
-            for (int i = 1; i < 4; i++)
-            {
-                var s = _music[i];
-                if (!s.clip || !s.isPlaying) continue;
-                int d = s.timeSamples - t0;
-                if (d > len / 2) d -= len; else if (d < -len / 2) d += len;
-                if (d > DriftSamples || d < -DriftSamples) s.timeSamples = t0;
-            }
-        }
-
-        // ------------------------------------------------------------------ heartbeat / glitch beeps
+        // ------------------------------------------------------------------ heartbeat / hums / glitch beeps
         void UpdateHeartbeat(float dt)
         {
             var cfg = GameConfig.I;
@@ -286,7 +225,7 @@ namespace Desync.Audio
             _hbVol = Mathf.MoveTowards(_hbVol, target, dt * (target > _hbVol ? 4f : 3f));
             if (_hbVol > 0.001f)
             {
-                if (!_hb.isPlaying && _hb.clip) { _hb.pitch = 1f; _hb.Play(); }
+                if (!_hb.isPlaying && _hb.clip) { _hb.pitch = 1f; StartLoop(_hb); }
                 _hb.volume = _hbVol * 0.8f;
                 _hb.pitch = Mathf.Lerp(1f, 1.75f, k);   // tempo (and pitch) climb with melt
             }
@@ -300,7 +239,7 @@ namespace Desync.Audio
             _humVol = Mathf.MoveTowards(_humVol, target, dt * HumGain / (target > _humVol ? HumIn : HumOut));
             if (_humVol > 0.001f)
             {
-                if (!_hum.isPlaying) { _hum.transform.position = GameState.NearestIce; _hum.Play(); }
+                if (!_hum.isPlaying) { _hum.transform.position = GameState.NearestIce; StartLoop(_hum); }
                 _hum.volume = _humVol;
             }
             else if (_hum.isPlaying) _hum.Stop();
@@ -319,13 +258,11 @@ namespace Desync.Audio
         }
 
         // ------------------------------------------------------------------ events
-        void OnLayerChanged(bool source) { _layerTarget = source ? 1f : 0f; }
-
         void OnFlipped(bool toSource)
             => Play2D(toSource ? _bank.flipSource : _bank.flipRender, toSource ? 1f : 0.9f, Random.Range(0.97f, 1.03f), PHigh);
 
         void OnFlipRejected() => Play2D(_bank.flipReject, 0.7f, 1f, PHigh);
-        void OnCameraTick(Vector3 p) => _p3.Play(_bank.cameraTick, 1f, Random.Range(0.96f, 1.04f), PLow, p);
+        void OnCameraTick(Vector3 p) => Play3D(_bank.cameraTick, 1f, Random.Range(0.96f, 1.04f), PLow, p);
         void OnTraceStarted(int n)
         {
             if (n >= GameConfig.I.tracesToAlarm) return;   // the alarm trace raises Alarm in the same frame: one big alarm, not two
@@ -333,8 +270,8 @@ namespace Desync.Audio
         }
 
         void OnAlarm() => Play2D(_bank.traceAlarm, 0.8f, 0.8f, PMax);
-        void OnIceWindup(Vector3 p) => _p3.Play(_bank.iceWindup, 0.85f, 1f, PMid, p);
-        void OnIceSpawned(Vector3 p) => _p3.Play(_bank.iceShriek, 0.8f, Random.Range(0.94f, 1.06f), PHigh, p);
+        void OnIceWindup(Vector3 p) => Play3D(_bank.iceWindup, 0.85f, 1f, PMid, p);
+        void OnIceSpawned(Vector3 p) => Play3D(_bank.iceShriek, 0.8f, Random.Range(0.94f, 1.06f), PHigh, p);
 
         void OnPlayerKilled(DeathCause cause)
         {
@@ -375,10 +312,13 @@ namespace Desync.Audio
 
         void OnPopText(string text, Color c)
         {
-            // REJECTED and ACCESS GRANTED already have their own cues; DRONE HIJACKED has the hijack sweep.
+            // These already have their own cue: REJECTED, ACCESS GRANTED, DRONE HIJACKED (hijack sweep), REDLINE (whoosh),
+            // AUDIT ESCALATED / UPLINK OPEN (AUDITOR stingers), GHOST xN (the pitched score pop).
             if (text == null || text.StartsWith("REJECTED", System.StringComparison.Ordinal)
-                || text.StartsWith("ACCESS", System.StringComparison.Ordinal) || text.StartsWith("DRONE", System.StringComparison.Ordinal)) return;
-            Play2D(_bank.uiPop, 0.6f, 1f + 0.05f * Mathf.Clamp(GameState.Combo, 0, 8), PMid);   // GHOST xN climbs
+                || text.StartsWith("ACCESS", System.StringComparison.Ordinal) || text.StartsWith("DRONE", System.StringComparison.Ordinal)
+                || text.StartsWith("REDLINE", System.StringComparison.Ordinal) || text.StartsWith("AUDIT", System.StringComparison.Ordinal)
+                || text.StartsWith("UPLINK", System.StringComparison.Ordinal) || text.StartsWith("GHOST", System.StringComparison.Ordinal)) return;
+            Play2D(_bank.uiPop, 0.6f, 1f + 0.05f * Mathf.Clamp(GameState.Combo, 0, 8), PMid);
         }
 
         void OnPaused(bool paused) { _evPaused = paused; }
@@ -388,25 +328,29 @@ namespace Desync.Audio
         void OnLevelSelect(bool shown) => OnUiClick();
         void OnUiClick() => Play2D(_bank.uiClick, 1f, 1f, PMid);
 
-        void Play2D(AudioClip c, float vol, float pitch, int prio) => _p2.Play(c, vol, pitch, prio, Vector3.zero);
+        void Play2D(AudioClip c, float vol, float pitch, int prio) => _pool.Play(c, vol, pitch, prio, false, Vector3.zero, VoiceCap - LoopVoices());
+        void Play3D(AudioClip c, float vol, float pitch, int prio, Vector3 pos) => _pool.Play(c, vol, pitch, prio, true, pos, VoiceCap - LoopVoices());
 
         // ------------------------------------------------------------------ voice pool (allocation-free after construction)
+        /// n2 non-spatial sources (UI / flow cues, still sound while paused) followed by n3 spatial ones (linear rolloff 2-15 m).
         sealed class Pool
         {
             readonly AudioSource[] _s;
             readonly float[] _t;
             readonly int[] _p;
-            readonly bool _spatial;
+            readonly int _n2;
 
-            public Pool(Transform parent, int n, bool spatial)
+            public Pool(Transform parent, int n2, int n3)
             {
-                _spatial = spatial;
+                _n2 = n2;
+                int n = n2 + n3;
                 _s = new AudioSource[n];
                 _t = new float[n];
                 _p = new int[n];
                 for (int i = 0; i < n; i++)
                 {
-                    var go = new GameObject((spatial ? "sfx3d." : "sfx2d.") + i);
+                    bool spatial = i >= n2;
+                    var go = new GameObject((spatial ? "sfx3d." : "sfx2d.") + (spatial ? i - n2 : i));
                     go.transform.SetParent(parent, false);
                     var s = go.AddComponent<AudioSource>();
                     s.playOnAwake = false;
@@ -420,7 +364,7 @@ namespace Desync.Audio
                         s.minDistance = 2f;
                         s.maxDistance = 15f;
                     }
-                    else { s.spatialBlend = 0f; s.ignoreListenerPause = true; }   // UI / flow cues still sound while paused
+                    else { s.spatialBlend = 0f; s.ignoreListenerPause = true; }
                     _s[i] = s;
                 }
             }
@@ -432,24 +376,59 @@ namespace Desync.Audio
                 return n;
             }
 
-            public void Play(AudioClip c, float vol, float pitch, int prio, Vector3 pos)
+            int Idle(int lo, int hi)
+            {
+                for (int i = lo; i < hi; i++) if (!_s[i].isPlaying) return i;
+                return -1;
+            }
+
+            /// Lowest-priority (then oldest) playing voice in [lo, hi) that is not more important than `prio`.
+            int Victim(int lo, int hi, int prio)
+            {
+                int k = -1;
+                for (int i = lo; i < hi; i++)
+                    if (_s[i].isPlaying && _p[i] <= prio && (k < 0 || _p[i] < _p[k] || (_p[i] == _p[k] && _t[i] < _t[k]))) k = i;
+                return k;
+            }
+
+            /// Stops voices until at most `allow` pooled voices are playing.
+            public void Trim(int allow)
+            {
+                if (allow < 0) allow = 0;
+                while (Playing() > allow)
+                {
+                    int v = Victim(0, _s.Length, int.MaxValue);
+                    if (v < 0) return;
+                    _s[v].Stop();
+                }
+            }
+
+            /// `allow` = pooled voices the loops leave free right now (VoiceCap - loops). A cue that would pass it first takes the
+            /// voice of the least important cue playing (any kind), or is dropped when everything playing outranks it.
+            public void Play(AudioClip c, float vol, float pitch, int prio, bool spatial, Vector3 pos, int allow)
             {
                 if (!c) return;
-                int k = -1;
-                for (int i = 0; i < _s.Length; i++) if (!_s[i].isPlaying) { k = i; break; }
+                int lo = spatial ? _n2 : 0, hi = spatial ? _s.Length : _n2;
+                int k = Idle(lo, hi);
                 if (k < 0)
                 {
-                    // all busy: steal the lowest-priority (then oldest) voice that is not more important than this cue
-                    for (int i = 0; i < _s.Length; i++)
-                        if (_p[i] <= prio && (k < 0 || _p[i] < _p[k] || (_p[i] == _p[k] && _t[i] < _t[k]))) k = i;
+                    // none free in this kind: reuse the lowest-priority (then oldest) voice that is not more important than this cue
+                    k = Victim(lo, hi, prio);
                     if (k < 0) return;
+                }
+                else if (Playing() >= allow)
+                {
+                    // a free source, but the loops leave no room for one more voice: take the least important cue's voice (any kind)
+                    int g = Victim(0, _s.Length, prio);
+                    if (g < 0) return;
+                    _s[g].Stop();
                 }
                 var s = _s[k];
                 s.Stop();
                 s.clip = c;
                 s.volume = vol;
                 s.pitch = pitch;
-                if (_spatial) s.transform.position = pos;
+                if (spatial) s.transform.position = pos;
                 s.Play();
                 _t[k] = Time.unscaledTime;
                 _p[k] = prio;
