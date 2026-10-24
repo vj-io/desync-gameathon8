@@ -108,6 +108,7 @@ namespace Desync.Flow
             GameState.RoomTDev = 0f;
             roomId = null;
             if (run) RunManager.I.Targets(room, out roomId, out GameState.RoomTDev, out roomPar);
+            else if (room && TimeAttack.Live) TimeAttack.Targets(room, out roomId, out GameState.RoomTDev, out roomPar);
             else if (room)
             {
                 if (room.index >= 0) roomId = ScoreKeeper.RoomId(room.index);   // a generated room outside a run is not scored
@@ -370,8 +371,9 @@ namespace Desync.Flow
         void ShowResults(float time, int eventsScore, bool raiseCleared)
         {
             var report = RoomReports.Build(room.index, time, eventsScore, score.PeakMultiplier, GameState.RoomTDev, roomPar,
-                                           run ? null : PreviousBest(room.index), GameState.TraceCount, GameState.Mods.Clamped().ScoreMult);
+                                           run ? null : TimeAttack.Live ? TimeAttack.PreviousBest() : PreviousBest(room.index), GameState.TraceCount, GameState.Mods.Clamped().ScoreMult);
             report.shareText = run ? RunManager.I.RoomCleared(report, score.BestChain)
+                                   : TimeAttack.Live ? TimeAttack.ShareText(report, score.BestChain)
                                    : RoomReports.AddToRun(report, score.BestChain, DateTime.UtcNow);
             var legacy = StoreResult(report);
             if (raiseCleared) GameEvents.RoomCleared?.Invoke(legacy);   // kept for listeners of the old grade card
@@ -390,6 +392,7 @@ namespace Desync.Flow
             if (!room || leaving || GameState.Phase != GameState.PhaseKind.Results) return;
             leaving = true;
             if (run) { RunManager.I.ContinueFromResults(); return; }   // draft, map, next act or run results
+            if (TimeAttack.Live) { TimeAttack.I.Leave(); return; }     // back to the Time-Attack select
             SceneFlow.LoadRoom(room.index + 1);   // index >= RoomCount loads Ending
         }
 
@@ -409,6 +412,7 @@ namespace Desync.Flow
                 bestCombo = bestCombo,
             };
             if (run) return r;   // run rooms are generated (or played under exploits): no classic best, no ending row
+            if (i < 0) return r;  // a generated room outside a run (Time-Attack): no classic row to store it in
             GameState.Results[i] = r;
             BestTimes.Record(r);
             return r;
