@@ -31,6 +31,19 @@ namespace Desync.Enemies
             return m;
         }
 
+        /// A boss room went or the run ended: no phase melt, no both-layers split, no Current boss (their own OnDisable does
+        /// the same, but Destroy lands only at the end of the frame).
+        public static void Reset()
+        {
+            SetMelt(0f, 0f);
+            Shader.SetGlobalFloat(DesyncId, 0f);
+            Auditor.Current = null;
+            Compiler.Current = null;
+            ArchitectBoss.Current = null;
+        }
+
+        static readonly int DesyncId = Shader.PropertyToID("_Desync");
+
         internal static void SetMelt(float source, float render)
         {
             if (MeltSource == source && MeltRender == render) return;

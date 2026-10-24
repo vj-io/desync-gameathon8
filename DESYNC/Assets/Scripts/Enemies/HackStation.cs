@@ -8,9 +8,10 @@ namespace Desync.Enemies
     /// for terminalWrongLockout. Complete -> OnHacked(). Cancel (HackCancelled): E again, death, or the player > range away.
     /// SOURCE presentation: room >= 3 shows arrows mirrored left/right; room >= 4 shows glyph noise with brief true flashes.
     /// Expected input is always the true sequence (flip to RENDER to read it). The sequence is seeded -> identical restarts.
+    /// Scrambled Prompts (heat mutator): ScrambledShare of stations show their arrows mirrored in both layers (Mirrored).
     public abstract class HackStation : MonoBehaviour, IInteractable, IResettable
     {
-        public const float CancelSlack = 1f, NoiseStep = 0.08f, FlashPeriod = 1.1f, FlashLength = 0.16f;
+        public const float CancelSlack = 1f, NoiseStep = 0.08f, FlashPeriod = 1.1f, FlashLength = 0.16f, ScrambledShare = 0.3f;
         const string Arrows = "↑→↓←";              // up, right, down, left
         const string Noise = "#%&@$?!/\\|<>=+*0123456789";
 
@@ -122,8 +123,26 @@ namespace Desync.Enemies
             return d.sqrMagnitude > r * r;
         }
 
+        /// Scrambled Prompts: this station's arrows read mirrored in both layers. Rolled from its seed and the room seed, so the
+        /// same stations are mirrored on every attempt of a room.
+        public bool Mirrored => ExploitFlags.ScrambledPrompts && ScrambleRoll((uint)seed ^ GameState.Seed) < ScrambledShare;
+
+        /// [0, 1) from a 32-bit hash (murmur3 finaliser): consecutive seeds give unrelated rolls.
+        public static float ScrambleRoll(uint x)
+        {
+            x ^= x >> 16; x *= 0x85EBCA6Bu; x ^= x >> 13; x *= 0xC2B2AE35u; x ^= x >> 16;
+            return (x & 0xFFFFFF) / 16777216f;
+        }
+
         /// 0 = true arrows, 1 = mirrored, 2 = scrambled. Overclock Hack reads the true sequence from SOURCE too (its melt is paid on completion).
-        int Mode => (!LayerState.InSource || ExploitFlags.OverclockHack) ? 0 : room >= 4 ? 2 : room >= 3 ? 1 : 0;
+        int Mode
+        {
+            get
+            {
+                int m = (!LayerState.InSource || ExploitFlags.OverclockHack) ? 0 : room >= 4 ? 2 : room >= 3 ? 1 : 0;
+                return m == 0 && Mirrored ? 1 : m;
+            }
+        }
 
         // ---------- screen (char buffer -> TMP, no per-frame allocations) ----------
 

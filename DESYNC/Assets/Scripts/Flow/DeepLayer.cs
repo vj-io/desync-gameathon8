@@ -40,6 +40,16 @@ namespace Desync.Flow
             return true;
         }
 
+        /// An ARCHITECT ending (BossEvents.Ending: "Exposed" | "Merged") as "ending_exposed" / "ending_merged"; true when new.
+        public static bool RecordEnding(SaveV3 save, string ending)
+        {
+            if (string.IsNullOrEmpty(ending)) return false;
+            string flag = "ending_" + ending.ToLowerInvariant();
+            if (save.unlocks.Contains(flag)) return false;
+            save.unlocks.Add(flag);
+            return true;
+        }
+
         /// Deep Layer opens with the first ARCHITECT kill.
         public static bool DeepLayerOpen(SaveV3 save) => Killed(save, 3);
 

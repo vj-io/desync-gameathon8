@@ -34,7 +34,7 @@ namespace Desync.Rules
                 case EventType.Death: Chain = 0; return 0;
                 case EventType.Graze:
                     _grazes.TryGetValue((e.Room, e.Ice), out int n);
-                    if (n >= Scoring.GrazeCapPerIce) return 0;
+                    if (n >= Scoring.GrazeCapPerIce + c.GrazeCapBonus) return 0;
                     _grazes[(e.Room, e.Ice)] = n + 1;
                     pts = Scoring.GrazePts;
                     break;

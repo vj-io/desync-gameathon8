@@ -15,6 +15,8 @@ namespace Desync.Enemies
         public static bool SpoofedBadge, Loopback, ProxyChain, InvisibleInk, Honeypot, WrongNumber, FalsePositive,
                            SysadminKey, StaticVeil, NullTrail, OverheatHalo, MirrorShard, Crosstalk, BurningEffigy,
                            PuppetThread, OverclockedPuppet, GhostPing, HallOfMirrors, OverclockHack, BruteForce;
+        /// Heat mutator Scrambled Prompts ("flag:" or "mut:scrambled_prompts"): HackStation.ScrambledShare of hacks mirrored.
+        public static bool ScrambledPrompts;
 
         /// Per-room consumption: Spoofed Badge ignores the FIRST camera detection only.
         public static bool SpoofUsed;
@@ -58,6 +60,7 @@ namespace Desync.Enemies
             HallOfMirrors = Has("hall_of_mirrors");
             OverclockHack = Has("overclock_hack");
             BruteForce = Has("brute_force");
+            ScrambledPrompts = Has("scrambled_prompts") || GameState.Flags.Contains("mut:scrambled_prompts");
             SpoofUsed = false;
         }
 

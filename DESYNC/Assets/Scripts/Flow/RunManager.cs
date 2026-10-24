@@ -54,6 +54,8 @@ namespace Desync.Flow
         HeatPlacement heatPlacement;  // Deep Layer threats the generator adds
         float deadline = -1f;         // Tight Deadline: room time of its +1 TRACE (-1 = off)
         bool deadlineDone;
+        int grazeSurge;               // Redline Surge: the last cleared room's REDLINE exits = +GRAZE cap per ICE in the next room
+        int ghostCacheHits;           // Ghost Cache exits this run (Fewer Choices pays every second one)
 
         /// The boss spawned in the current room ("auditor", "compiler", "architect"), null elsewhere.
         public string CurrentBoss { get; private set; }
@@ -102,6 +104,7 @@ namespace Desync.Flow
             GameEvents.RoomReset += OnRoomReset;
             DeepRun.StartRequested += OnStartDeep;
             BossEvents.MeltChanged += OnBossMelt;
+            BossEvents.Ending += OnEnding;
         }
 
         void OnDisable()
@@ -122,6 +125,7 @@ namespace Desync.Flow
             GameEvents.RoomReset -= OnRoomReset;
             DeepRun.StartRequested -= OnStartDeep;
             BossEvents.MeltChanged -= OnBossMelt;
+            BossEvents.Ending -= OnEnding;
         }
 
         /// Conditional exploit effects (chain>=, melt>=, trace>=, layer=) re-folded whenever one of their inputs moved.
@@ -171,6 +175,9 @@ namespace Desync.Flow
         }
 
         void OnRoomReset() => deadlineDone = false;   // every attempt gets its own deadline
+
+        /// ARCHITECT ending (Exposed / Merged) -> SaveV3.unlocks "ending_exposed" / "ending_merged" (story shards, true ending).
+        void OnEnding(string ending) { if (RunUnlocks.RecordEnding(SaveService.Data, ending)) SaveService.Save(); }
 
         ConditionContext Context() => new ConditionContext
         {
@@ -295,6 +302,7 @@ namespace Desync.Flow
             DeepRun.Picks.Clear();
             heatPlacement = default;
             deadline = -1f;
+            grazeSurge = ghostCacheHits = 0;
             ClearRoomState();
         }
 
@@ -403,6 +411,8 @@ namespace Desync.Flow
             spec = bossArena != null ? bossArena.spec : RunRules.Room(node, mirror, chunks, DeepRun.Level, heatPlacement);
             // held exploits + room mutators + Deep Layer picks; flags gain "mut:<id>" and the DL >= 6 boss heat flag
             built = DeepRules.Build(RunState.Held, RunState.RoomMutators, DeepRun.Level, DeepRun.Picks, catalog, RunState.Mode == RunMode.Daily ? "daily" : null);
+            built.mods.GrazeCapBonus += grazeSurge;   // Redline Surge, earned in the previous room
+            grazeSurge = 0;
             GameState.Flags.Clear();
             foreach (var f in built.flags) GameState.Flags.Add(f);
             if (RunRules.AuditorDrones(node, spec)) GameState.Flags.Add(RunRules.AuditorDronesFlag);
@@ -478,7 +488,9 @@ namespace Desync.Flow
             RunState.Cycles += RunRules.RoomCycles(r.grade, node.type == NodeType.Elite);
             RunState.MeltCarry = GameState.Melt * DeepRules.CarryShare(DeepRun.Picks, catalog, RunRules.MeltCarryShare);   // Persistent Melt: 100 %
             bestChain = Math.Max(bestChain, chain);
-            if (PerkBinder.GhostCache && chain >= 10) RunState.Rerolls++;   // Ghost Cache: exit a room with a chain >= 10
+            if (PerkBinder.GhostCache && chain >= 10 && RunRules.GhostCacheReroll(++ghostCacheHits, DeepRules.Has(DeepRun.Picks, "fewer_choices")))
+                RunState.Rerolls++;   // Ghost Cache: exit a room with a chain >= 10
+            grazeSurge = GameState.Flags.Contains("flag:redline_surge") && ScoreKeeper.I ? ScoreKeeper.I.Redlines : 0;
             if (node.type == NodeType.Boss && RunUnlocks.RecordKill(SaveService.Data, node.act)) SaveService.Save();   // first kill: act / Deep Layer unlocks
             SetPhase(RunPhase.Results);
             var g = new StringBuilder(RunState.Grades.Count * 2);
@@ -531,6 +543,7 @@ namespace Desync.Flow
             zoneMeshes.Clear();
             RunPerks.DeadZones.Clear();
             CurrentBoss = null;
+            BossEvents.Reset();   // a boss's melt / desync split / Current must not outlive its room (Destroy lands at frame end)
         }
 
         /// DEAD_ZONES: 1..N striped floor strips (N = the mutator's value) where SPACE does nothing.

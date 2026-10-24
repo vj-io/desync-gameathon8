@@ -25,6 +25,8 @@ namespace Desync.Flow
         public readonly List<RunEvent> Log = new List<RunEvent>(512);
         public float PeakMultiplier { get; private set; } = 1f;
         public int BestChain { get; private set; }
+        /// REDLINE exits in this attempt (Redline Surge reads it at the room's exit).
+        public int Redlines { get; private set; }
 
         readonly ScoreTally tally = new ScoreTally();
         readonly float[] pending = new float[16];   // flip times awaiting their clean window (ring buffer)
@@ -52,6 +54,7 @@ namespace Desync.Flow
             GameEvents.Grazed += OnGrazed;
             GameEvents.DeathRecap += OnDeath;
             Enemies.EnemyEvents.PuppetString += OnPuppetString;
+            Enemies.BossEvents.StringSevered += OnStringSevered;
         }
 
         void OnDisable()
@@ -65,6 +68,7 @@ namespace Desync.Flow
             GameEvents.Grazed -= OnGrazed;
             GameEvents.DeathRecap -= OnDeath;
             Enemies.EnemyEvents.PuppetString -= OnPuppetString;
+            Enemies.BossEvents.StringSevered -= OnStringSevered;
         }
 
         /// Fresh attempt of room `index` (negative: no room, stop scoring).
@@ -82,6 +86,7 @@ namespace Desync.Flow
             burnoutReady = 0f;
             PeakMultiplier = 1f;
             BestChain = 0;
+            Redlines = 0;
             live = id != null;
             roomId = id;
             Publish();
@@ -150,6 +155,8 @@ namespace Desync.Flow
         }
         void OnGrazed(string ice) { if (live) Add(EventType.Graze, ice); }
         void OnPuppetString(string id) { if (live) Add(EventType.PuppetString); }   // PUPPET_STRING 400 x multiplier (Scoring)
+        /// The ARCHITECT's final string (index Terminals) is a PUPPET_STRING; strings 0..2 are terminal hacks, scored as hacks.
+        void OnStringSevered(int i) { if (i == Enemies.ArchitectBoss.Terminals) OnPuppetString(null); }
 
         void OnDeath(DeathInfo _)
         {
@@ -231,6 +238,7 @@ namespace Desync.Flow
 
         void Redline()
         {
+            Redlines++;
             GameEvents.PopText?.Invoke("REDLINE", GameConfig.I.danger);
             GameEvents.ShakeRequest?.Invoke(0.4f);   // JuiceUtil drops it under Reduce FX
             StartCoroutine(SlowMo());

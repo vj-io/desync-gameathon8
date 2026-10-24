@@ -39,6 +39,9 @@ namespace Desync.Flow
 
         public static int Price(Rarity r) => r == Rarity.C ? PriceCommon : r == Rarity.R ? PriceRare : PriceEpic;
 
+        /// Ghost Cache: the `nth` qualifying exit of the run (from 1) pays a reroll token; under Fewer Choices only every second one.
+        public static bool GhostCacheReroll(int nth, bool fewerChoices) => !fewerChoices || nth % 2 == 0;
+
         /// The full catalog restricted to the M2 exploits (mutators kept).
         public static Catalog DraftPool(Catalog full)
         {
