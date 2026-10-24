@@ -2,83 +2,113 @@
 
 `SPACE = SEE THE CODE`
 
-> You are standing in HALCYON Corp's neon office. Press SPACE and the room tears apart into falling green code: the walls stop existing, the cameras go blind — but hunter-ICE lives in the code, and every second there melts your brain. Flip in and out of reality to slip past surveillance, breach terminals, hijack the company's drones, and reach the Root to unmask the Architects before you flatline.
+![DESYNC: one key flips the office into falling green code](docs/media/cover.gif)
 
-First-person stealth-action intrusion · 7–9 min · 6 rooms · mouse + keyboard (gamepad optional) · Gameathon 8.0 entry
+> You process tickets at HALCYON Corp. Your city is a render. Your boss is a puppet.
 
-## Play in browser
+DESYNC is a first-person stealth game with one core verb. Press SPACE and HALCYON's neon office tears into falling green code: walls stop existing, cameras go blind, but hunter-ICE lives in the code and every second there melts your brain. Flip in and out of reality to slip past surveillance, breach terminals, outrun security officers and reach the Architect.
 
-[https://desync-nine.vercel.app](https://desync-nine.vercel.app)
+**[Play in the browser](https://desync-nine.vercel.app)** · [Download for macOS / Windows](https://github.com/vj-io/desync-gameathon8/releases/latest) · [Trailer](https://github.com/vj-io/desync-gameathon8/releases/download/v2.0.0/DESYNC-trailer.mp4) · [itch.io](https://vj-io.itch.io/desync)
 
-Chrome recommended. Click **CLICK TO JACK IN** on the title screen: the click locks the pointer and starts audio.
+Gameathon 8.0 entry by team **Kali Mirch** (Vellore Institute of Technology). Unity 6.4, URP, WebGL.
+
+| RENDER, the lie | SOURCE, the truth | The Architect |
+| --- | --- | --- |
+| ![RENDER layer](docs/media/shot-render.jpg) | ![SOURCE layer](docs/media/shot-source.jpg) | ![The Architect](docs/media/shot-architect.jpg) |
+
+## What's in the game
+
+- **Story mode.** First-time players get a short in-engine story, then guided prompts in Room 1. Thirty story shards hidden across the runs tell the rest. Three endings: Exposed, Merged, and the true ending, Desync.
+- **BREACH runs.** A roguelite: three acts on a branching map, rooms generated from hand-made chunks and checked for solvability, and three bosses (AUDITOR, COMPILER, ARCHITECT). Between rooms you draft exploits (58, including duos), shop at the Black Market or rest at a Cooldown node.
+- **Enemies.** Cameras, sweepers, drones, ICE hunters and trackers, lanterns, sentinels, splitters, daemons, watcher eyes, and HALCYON security officers who patrol, chase and strike in RENDER.
+- **Modes.** Campaign, Quick Breach (one act), Classic (the original six rooms), Daily Breach (one shared seed and one scored attempt a day), Weekly Ladder, Deep Layer (heat levels 1-30), Time-Attack (42 rooms, medals, ghost replays), Endless Overclock.
+- **Progression.** Fragments buy an unlock tree of exploit packs, starter archetypes, the Black Market and Time-Attack. Deep Layer pays cosmetic rewards.
+- **Accessibility.** Key remapping, Assist mode, colour-blind palette, high contrast, HUD and subtitle size, Reduce FX and Reduce Flashing, separate volume sliders.
+
+## How it plays
+
+Each room is a stealth puzzle: read it, flip to slip past what's watching, breach the terminals, reach the exit.
+
+- **RENDER (the lie):** walls are solid. Cameras and drones see you. Security officers can reach you.
+- **SOURCE (the truth):** walls are passable and cameras are blind, but ICE hunters live here.
+- **Melt:** fills in SOURCE (+12 %/s, +5 % per flip) and drains in RENDER (−4 %/s). At 100 % you reboot.
+- **TRACE:** half a second in a camera cone starts a TRACE. Three TRACEs and the alarm restarts the room.
+- **Score:** clean flips build a chain multiplier (up to ×4). Grazing ICE and leaving SOURCE on the brink of melt (REDLINE) pay extra.
+- A flip back to RENDER is refused if you would land inside a wall.
 
 ## Controls
 
 | Keyboard / mouse | Gamepad | Action |
 | --- | --- | --- |
-| Mouse | Right stick | Look (sensitivity in pause menu) |
-| WASD | Left stick | Move, 5 m/s (no sprint, no jump) |
-| Space | South | Flip layer, RENDER ↔ SOURCE |
-| E (terminal within 2.5 m) | West | Start hack |
-| Arrow keys | D-pad | Enter the sequence during a hack |
-| R | — | Restart room |
-| Esc | — | Pause. The browser releases the pointer on Esc; click to resume |
-| F2 (hidden) | — | Level select |
-| F9 (hidden) | — | Trace-free demo mode |
+| Mouse | Right stick | Look |
+| WASD | Left stick | Move |
+| Space | A / South | Flip RENDER ↔ SOURCE |
+| E | X / West | Hack a terminal |
+| Arrow keys | D-pad | Enter the hack sequence |
+| R | — | Restart the room (reroll in a draft) |
+| Tab | — | Run map |
+| C | — | Copy share text on results |
+| 1 / 2 / 3 | — | Pick an exploit in a draft |
+| Esc | Start | Pause, settings, key bindings |
 
-## How it plays
+Keys can be remapped from the pause menu (Esc always pauses).
 
-Space flips the world between two layers. Each room is a stealth puzzle: read it, flip to slip past what is watching, dodge the threats, breach the terminals, reach the portal.
+## Run it from source
 
-- **RENDER (the lie):** walls are solid. Cameras and drones are active.
-- **SOURCE (the truth):** walls are passable. Cameras are blind. ICE hunters are active.
-- **Flip rule:** a flip is rejected if you would end inside a wall.
-- **Melt:** the brain-melt meter fills in SOURCE (+12 %/s, +5 % per flip) and drains in RENDER (−4 %/s). At 100 % you reboot.
-- **TRACE:** staying in a camera cone for 0.5 s starts a 6 s TRACE: cones turn red and ICE spawns. Three TRACEs in one room restart it.
-- **ICE:** hunters spawn from vents in SOURCE and chase you through the floor, where walls used to be. Touching one is a fail.
-- **Terminals:** press E, then enter the arrow sequence. A wrong key resets it after a 0.4 s lockout. Each breach leaks a line of the Architects' memo.
-- **Fail:** an ICE touch, melt at 100 % or a third TRACE: 0.2 s REBOOT, then an identical restart. No death screen.
+**Requirements:** Unity **6000.4.6f1** (Unity 6.4) with WebGL, macOS and Windows build support. Node 20+ for the browser tests and the leaderboard API. The [Vercel CLI](https://vercel.com/docs/cli) for deploys.
 
-> You process tickets at HALCYON Corp. Your city is a render. Your boss is a puppet.
->
-> Every terminal you breach leaks a line of the Architects' memo: the city is a training set, and you are the data.
->
-> Reach the Root, tear off their masks in SOURCE, and broadcast their real faces before your brain melts.
+```bash
+git clone https://github.com/vj-io/desync-gameathon8.git
+cd desync-gameathon8
+```
 
-**Rooms**
+Open the `DESYNC/` folder in Unity Hub. The first import takes a few minutes. Packages, including PrimeTween from OpenUPM, resolve on their own. Press Play in the `Boot` scene.
 
-1. **BOOT**: flip; walls vanish
-2. **EYES**: cameras; phase past the cones
-3. **ICE**: hunters; melt; flip back to live
-4. **HIJACK**: both layers lethal; hijack drones; mirrored prompts
-5. **UNSTABLE**: glitch zones; scrambled prompts; TRACE countdown (90 s)
-6. **ROOT**: the Architect's gaze sweeps both layers; three shield terminals
+The scripts in `tools/` run Unity in batch mode. They expect the editor at `/Applications/Unity/Hub/Editor/6000.4.6f1`; change `UNITY=` in `tools/unity.sh` if yours is elsewhere.
 
-## Run it
+| Command | What it does |
+| --- | --- |
+| `tools/unity.sh compile <tag>` | Compile the project and report errors |
+| `tools/test.sh all` | Run every EditMode and PlayMode test; exits non-zero on any failure |
+| `tools/build.sh WebRelease` | WebGL build into `Builds/WebRelease` (also `WebDev`, `MacRelease`, `WinRelease`) |
+| `tools/e2e.sh` | Browser tests (Playwright) against `Builds/WebRelease` |
+| `tools/deploy.sh [--prod]` | Deploy `Builds/WebRelease` and `web/api` to Vercel (a preview unless `--prod`) |
 
-- **Web (primary):** open the link above. Test matrix: Chrome (primary), Edge, Firefox, Safari 17+.
-- **macOS:** the build is unsigned. Right-click the app, choose Open, then confirm to get past Gatekeeper.
-- **Windows:** Mono build. Run the game `.exe`.
-- Native builds are not in git (`Builds/` is ignored). Build them with `tools/build.sh MacRelease` or `tools/build.sh WinRelease`.
+### Deploying to Vercel
+
+`web/site/vercel.json` holds the headers (Brotli `.unityweb`, caching). On a new machine, link the project once:
+
+```bash
+cd web/site && vercel link --project desync
+```
+
+The online leaderboard (`web/api/leaderboard.ts`) needs a Redis store. Add **Upstash for Redis** to the Vercel project from the Storage tab; it provides `KV_REST_API_URL` and `KV_REST_API_TOKEN`. Without the store, the API answers 503 and the game shows local bests only.
+
+## Project layout
+
+```
+DESYNC/              Unity project
+  Assets/Scripts/    Core, Rules, Gen, Content, Flow, Player, Enemies, Levels, UI, Audio, Art, Net (one asmdef each)
+  Assets/Resources/  Content JSON: exploits, mutators, chunks, bosses, story, shards, unlocks, rooms, hints
+web/site/            Vercel site config (the build is copied in on deploy)
+web/api/             Leaderboard function and its tests
+tests/e2e/           Playwright browser tests
+tools/               Unity, build, test and deploy scripts
+docs/                Architecture, design decisions, balance, audio, analytics, launch checklist
+```
+
+Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/CONTEXT.md](docs/CONTEXT.md). Design decisions are in [docs/DECISIONS.md](docs/DECISIONS.md), and the engineering rules are in [CONTRACT.md](CONTRACT.md).
 
 ## Tech
 
-- Unity 6.4 (6000.4.6f1), Universal Render Pipeline 17.4, Input System, WebGL2 build.
-- Rooms are code-generated greybox meshes; shaders are hand-written URP HLSL. No Asset Store, ProBuilder or Shader Graph.
-- Hosted on Vercel. Build the web target with `tools/build.sh WebRelease`; deploy with `tools/deploy.sh --prod` (omit `--prod` for a preview).
-- Spec: [DESYNC_FP_PRD.md](DESYNC_FP_PRD.md). Engineering decisions and the build contract: [CONTRACT.md](CONTRACT.md). Where they differ, CONTRACT.md wins. Built by parallel agent workstreams against that contract.
-
-## Known issues
-
-- Gamepad UI navigation is not implemented.
-- Safari pointer-lock behaviour is untested.
-
-## Team
-
-BD (PRD owner).
+- Unity 6.4 (6000.4.6f1), Universal Render Pipeline 17.4, Input System, AI Navigation (NavMesh), TextMeshPro, PrimeTween.
+- Rules, generation and content are engine-free assemblies. All randomness goes through seeded Mulberry32 streams, so a seed always builds the same run.
+- Shaders are hand-written URP HLSL. Rooms are built in code from chunk data.
+- WebGL with Brotli compression (about 23 MB), hosted on Vercel.
+- Tests: about 270 EditMode and 300 PlayMode tests, plus 11 browser tests.
 
 ## Credits
 
-Third-party assets, licences and sources: [CREDITS.md](CREDITS.md).
+Third-party assets, fonts and code, with licences and sources: [CREDITS.md](CREDITS.md). Models, textures and audio are CC0; fonts are SIL OFL; PrimeTween is MIT.
 
 `#Gameathon8 #TheMatrix #BreakTheSimulation`
