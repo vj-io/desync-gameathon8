@@ -1,16 +1,15 @@
 using System;
 using System.Collections.Generic;
 using TMPro;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace Desync.Levels.Editor
+namespace Desync.Levels
 {
     /// Turns one RoomDef grid into scene geometry: walls / racks / railings (mat.world, WallRender boxes), floor / upper
     /// floor / ramps (mat.floor, Floor boxes), furniture combined into one mesh (mat.world, WallRender boxes), posters
     /// (mat.poster + TMP) and invisible Default-layer bounds around void cells. Every mesh goes through MeshPrep.
-    sealed class RoomGeo
+    public sealed class RoomGeo
     {
         public readonly RoomDef d;
         public int TriCount;
@@ -18,8 +17,8 @@ namespace Desync.Levels.Editor
         readonly Vector3 origin;
         static readonly int[] DC = { 0, 1, 0, -1 }, DR = { -1, 0, 1, 0 };   // N E S W in grid steps
 
-        // palette (sRGB, like GameConfig's colours)
-        static readonly Color NavyDark = new Color(0.03f, 0.035f, 0.08f), Navy = new Color(0.085f, 0.1f, 0.21f),
+        // palette (sRGB, like GameConfig's colours); shared with RoomBuilder
+        internal static readonly Color NavyDark = new Color(0.03f, 0.035f, 0.08f), Navy = new Color(0.085f, 0.1f, 0.21f),
             Cap = new Color(0.07f, 0.075f, 0.11f), FloorA = new Color(0.05f, 0.06f, 0.12f), FloorB = new Color(0.042f, 0.05f, 0.1f),
             RackBody = new Color(0.035f, 0.04f, 0.065f), Pilaster = new Color(0f, 0.42f, 0.52f);
         readonly Color cyan, magenta, green;
@@ -129,7 +128,14 @@ namespace Desync.Levels.Editor
             var mesh = kit.ToMesh(name);
             assets.Add(mesh);
             for (int s = 0; s < mesh.subMeshCount; s++) TriCount += (int)(mesh.GetIndexCount(s) / 3);
+            return MeshObject(null, name, mesh, matKey, layer);
+        }
+
+        /// Static, shadowless renderer for one prepared mesh (material from AssetLib, mat.world fallback).
+        internal static GameObject MeshObject(Transform parent, string name, Mesh mesh, string matKey, int layer)
+        {
             var go = new GameObject(name) { layer = layer };
+            if (parent) go.transform.SetParent(parent, false);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var mr = go.AddComponent<MeshRenderer>();
             mr.sharedMaterial = AssetLib.Get<Material>(matKey) ?? AssetLib.Get<Material>("mat.world");
@@ -137,35 +143,46 @@ namespace Desync.Levels.Editor
             mr.receiveShadows = false;
             mr.lightProbeUsage = LightProbeUsage.Off;
             mr.reflectionProbeUsage = ReflectionProbeUsage.Off;
-            GameObjectUtility.SetStaticEditorFlags(go, StaticEditorFlags.BatchingStatic);
+            MarkStatic(go);
             return go;
         }
 
-        static Transform Node(string name, int layer)
+        internal static Transform Node(string name, int layer, Transform parent = null)
         {
             var go = new GameObject(name) { layer = layer };
-            GameObjectUtility.SetStaticEditorFlags(go, StaticEditorFlags.BatchingStatic);
+            if (parent) go.transform.SetParent(parent, false);
+            MarkStatic(go);
             return go.transform;
         }
 
-        static void BoxCol(Transform t, Vector3 center, Vector3 size)
+        /// Editor: static-batching flag (scenes built by LevelBuilder). Players get no flag: runtime rooms are already one mesh per layer.
+        internal static void MarkStatic(GameObject go)
+        {
+#if UNITY_EDITOR
+            UnityEditor.GameObjectUtility.SetStaticEditorFlags(go, UnityEditor.StaticEditorFlags.BatchingStatic);
+#endif
+        }
+
+        internal static void BoxCol(Transform t, Vector3 center, Vector3 size)
         {
             var b = t.gameObject.AddComponent<BoxCollider>();
             b.center = center; b.size = size;
         }
 
-        /// Greedy rectangles over cells matching `pred` (for colliders).
-        List<RectInt> Rects(Func<int, int, bool> pred)
+        List<RectInt> Rects(Func<int, int, bool> pred) => Rects(d.Cols, d.Rows, pred);
+
+        /// Greedy rectangles (x = column, y = row) over the cells of a cols x rows grid matching `pred`.
+        internal static List<RectInt> Rects(int cols, int rows, Func<int, int, bool> pred)
         {
-            var used = new bool[d.Cols, d.Rows];
+            var used = new bool[cols, rows];
             var list = new List<RectInt>();
-            for (int r = 0; r < d.Rows; r++)
-            for (int c = 0; c < d.Cols; c++)
+            for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
             {
                 if (used[c, r] || !pred(c, r)) continue;
-                int w = 1; while (c + w < d.Cols && !used[c + w, r] && pred(c + w, r)) w++;
+                int w = 1; while (c + w < cols && !used[c + w, r] && pred(c + w, r)) w++;
                 int h = 1;
-                for (bool grow = true; grow && r + h < d.Rows; )
+                for (bool grow = true; grow && r + h < rows; )
                 {
                     for (int x = c; x < c + w; x++) if (used[x, r + h] || !pred(x, r + h)) { grow = false; break; }
                     if (grow) h++;
@@ -296,7 +313,7 @@ namespace Desync.Levels.Editor
                 slope.transform.SetParent(cols, false);
                 slope.transform.SetPositionAndRotation(lo + new Vector3(dir * run * 0.5f, uh * 0.5f, 0f), Quaternion.Euler(0f, 0f, dir * ang));
                 BoxCol(slope.transform, new Vector3(0f, -0.15f, 0f), new Vector3(Mathf.Sqrt(run * run + uh * uh), 0.3f, cs));
-                GameObjectUtility.SetStaticEditorFlags(slope, StaticEditorFlags.BatchingStatic);
+                MarkStatic(slope);
             }
             if (h0 > 0.1f) BoxCol(cols, p + Vector3.up * ((h0 - 0.05f) * 0.5f), new Vector3(cs, h0 - 0.05f, cs));
         }
@@ -407,10 +424,13 @@ namespace Desync.Levels.Editor
             }
         }
 
-        /// Appends the model prefab's meshes at pos/yaw; returns the placed bounds and grows `all`.
-        Bounds Place(MeshKit k, string key, Vector3 pos, float yaw, ref Bounds all)
+        /// Editor hook: base colours of a model's source submeshes when its import has no vertex colours (LevelBuilder sets it).
+        public static Func<string, Mesh, Color[]> SourceColors;
+
+        /// Appends the model prefab's (AssetLib model.*) meshes at pos/yaw; returns the placed bounds and grows `all`.
+        internal static Bounds Place(MeshKit k, string key, Vector3 pos, float yaw, ref Bounds all)
         {
-            var prefab = ModelLib.Prefab(key);
+            var prefab = AssetLib.Get<GameObject>(key);
             var placed = new Bounds(pos, Vector3.zero);
             if (!prefab) return placed;
             var root = Matrix4x4.TRS(pos, Quaternion.Euler(0f, yaw, 0f), Vector3.one) * prefab.transform.worldToLocalMatrix;
@@ -420,7 +440,7 @@ namespace Desync.Levels.Editor
                 var mesh = mf.sharedMesh;
                 if (!mesh) continue;
                 var m = root * mf.transform.localToWorldMatrix;
-                k.Append(mesh, m, mesh.colors.Length == mesh.vertexCount ? null : ModelLib.SourceColors(key, mesh), Grade);
+                k.Append(mesh, m, mesh.colors.Length == mesh.vertexCount ? null : SourceColors?.Invoke(key, mesh), Grade);
                 var mb = mesh.bounds;
                 for (int i = 0; i < 8; i++)
                 {
@@ -444,33 +464,40 @@ namespace Desync.Levels.Editor
             for (int c = 0; c < d.Cols; c++)
             {
                 if (Ch(c, r) != Legend.Poster || !WallSide(c, r, out var away)) continue;
-                const float w = 1.2f, h = 1.8f;
                 var ctr = Center(c, r) - away * (cs * 0.5f - 0.03f) + Vector3.up * (LevelY(c, r) + 1.95f);
-                var right = Vector3.Cross(Vector3.up, -away).normalized * (w * 0.5f);   // viewer's right, facing the wall
-                var up = Vector3.up * (h * 0.5f);
-                k.Quad(ctr - right - up, ctr - right + up, ctr + right + up, ctr + right - up, away, Color.white, Color.white, Color.white, Color.white,
-                       new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0));
-                if (!font) continue;
-                var go = new GameObject("PosterText");
-                go.transform.SetParent(root, false);
-                // text slot = the empty panel in the lower third of tex_halcyon (v 0.06..0.25); TMP reads along +Z
-                go.transform.SetPositionAndRotation(ctr + away * 0.012f - Vector3.up * (h * 0.342f), Quaternion.LookRotation(-away));
-                var tmp = go.AddComponent<TextMeshPro>();
-                tmp.font = font;
-                tmp.rectTransform.sizeDelta = new Vector2(w * 0.78f, h * 0.16f);
-                tmp.fontSize = 1.2f;
-                tmp.enableAutoSizing = true; tmp.fontSizeMin = 0.2f; tmp.fontSizeMax = 1.6f;
-                tmp.alignment = TextAlignmentOptions.Center;
-                tmp.textWrappingMode = TextWrappingModes.NoWrap;
-                tmp.overflowMode = TextOverflowModes.Overflow;
-                tmp.color = (n & 1) == 0 ? magenta : cyan;
-                tmp.text = slogans[n % slogans.Length];
-                var tr = tmp.GetComponent<MeshRenderer>();
-                tr.shadowCastingMode = ShadowCastingMode.Off; tr.receiveShadows = false;
-                tmp.ForceMeshUpdate();
+                Poster(k, root, ctr, away, font, (n & 1) == 0 ? magenta : cyan, slogans[n % slogans.Length]);
                 n++;
             }
             return root;
+        }
+
+        /// One HALCYON poster panel (mat.poster quad into `k`) centred on `ctr` on a wall face looking along `away`,
+        /// with its slogan as TMP text under `root` (skipped without a font).
+        internal static void Poster(MeshKit k, Transform root, Vector3 ctr, Vector3 away, TMP_FontAsset font, Color color, string slogan)
+        {
+            const float w = 1.2f, h = 1.8f;
+            var right = Vector3.Cross(Vector3.up, -away).normalized * (w * 0.5f);   // viewer's right, facing the wall
+            var up = Vector3.up * (h * 0.5f);
+            k.Quad(ctr - right - up, ctr - right + up, ctr + right + up, ctr + right - up, away, Color.white, Color.white, Color.white, Color.white,
+                   new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0));
+            if (!font) return;
+            var go = new GameObject("PosterText");
+            go.transform.SetParent(root, false);
+            // text slot = the empty panel in the lower third of tex_halcyon (v 0.06..0.25); TMP reads along +Z
+            go.transform.SetPositionAndRotation(ctr + away * 0.012f - Vector3.up * (h * 0.342f), Quaternion.LookRotation(-away));
+            var tmp = go.AddComponent<TextMeshPro>();
+            tmp.font = font;
+            tmp.rectTransform.sizeDelta = new Vector2(w * 0.78f, h * 0.16f);
+            tmp.fontSize = 1.2f;
+            tmp.enableAutoSizing = true; tmp.fontSizeMin = 0.2f; tmp.fontSizeMax = 1.6f;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.textWrappingMode = TextWrappingModes.NoWrap;
+            tmp.overflowMode = TextOverflowModes.Overflow;
+            tmp.color = color;
+            tmp.text = slogan;
+            var tr = tmp.GetComponent<MeshRenderer>();
+            tr.shadowCastingMode = ShadowCastingMode.Off; tr.receiveShadows = false;
+            tmp.ForceMeshUpdate();
         }
 
         /// Room 1 floor decal: a quad with mat.decal (ART bakes the text into its texture); TMP text if the material is missing.

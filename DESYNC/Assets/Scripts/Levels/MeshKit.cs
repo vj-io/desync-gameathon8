@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace Desync.Levels.Editor
+namespace Desync.Levels
 {
     /// Vertex-coloured mesh accumulator. Quads wind themselves to face the given normal. ToMesh runs MeshPrep.
-    sealed class MeshKit
+    public sealed class MeshKit
     {
         readonly List<Vector3> pos = new List<Vector3>();
         readonly List<Vector3> nrm = new List<Vector3>();

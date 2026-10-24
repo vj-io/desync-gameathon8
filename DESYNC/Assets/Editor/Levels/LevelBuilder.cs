@@ -16,8 +16,9 @@ namespace Desync.Levels.Editor
 {
     /// Generates every scene from RoomLayouts (idempotent):
     ///   tools/unity.sh exec levels Desync.Levels.Editor.LevelBuilder.BuildAll
-    /// Boot (empty), Title (office vignette + camera), Room_01..06 (geometry, RoomInfo, player, enemies, NavMesh),
-    /// Ending (Architect head + billboards), then EditorBuildSettings in that order.
+    /// Boot (empty), Title (office vignette + camera), Breach (fog + light only: RoomBuilder builds generated rooms into it
+    /// at runtime), Room_01..06 (geometry, RoomInfo, player, enemies, NavMesh), Ending (Architect head + billboards),
+    /// then EditorBuildSettings in that order.
     public static class LevelBuilder
     {
         public const string SceneDir = "Assets/Scenes";
@@ -28,6 +29,7 @@ namespace Desync.Levels.Editor
         {
             AssetDatabase.Refresh();
             ModelLib.RegisterModels();
+            RoomGeo.SourceColors = ModelLib.SourceColors;
             var scenes = new List<string>();
             int failed = 0;
             void Run(string name, Action<string> build)
@@ -38,6 +40,7 @@ namespace Desync.Levels.Editor
             }
             Run(SceneFlow.Boot, BuildBoot);
             Run(SceneFlow.Title, p => BuildBackdrop(p, RoomLayouts.Title, true));
+            Run(RoomBuilder.BreachScene, BuildBreach);
             foreach (var room in RoomLayouts.Rooms) Run(SceneFlow.Room(room.index), p => BuildRoom(p, room));
             Run(SceneFlow.Ending, p => BuildBackdrop(p, RoomLayouts.Ending, false));
 
@@ -71,6 +74,14 @@ namespace Desync.Levels.Editor
             Environment();
             var cam = MainCamera(new Vector3(0, 1, -10), Vector3.zero);
             cam.backgroundColor = Color.black;
+            Save(scene, path);
+        }
+
+        /// Breach: the room environment (fog, ambient, sun) and nothing else; RunManager builds each generated room into it.
+        static void BuildBreach(string path)
+        {
+            var scene = NewScene(path);
+            Environment();
             Save(scene, path);
         }
 
@@ -212,7 +223,7 @@ namespace Desync.Levels.Editor
             catch (Exception e) { Debug.LogError($"[DESYNC] LEVELS: factory {what} threw (owner: that factory's workstream): {e}"); return null; }
         }
 
-        static void Environment()
+        internal static void Environment()
         {
             var cfg = GameConfig.I;
             RenderSettings.fog = true;

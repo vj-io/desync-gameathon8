@@ -12,6 +12,9 @@ EditorBuildSettings:
     path: Assets/Scenes/Title.unity
     guid: 439d2888367ab4a35a0a60d86768d84f
   - enabled: 1
+    path: Assets/Scenes/Breach.unity
+    guid: 5ed26906607cd48e186a619ec76daa87
+  - enabled: 1
     path: Assets/Scenes/Room_01.unity
     guid: 5b7d9824b019b475488ec8e1bb317027
   - enabled: 1
