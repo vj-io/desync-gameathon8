@@ -41,8 +41,8 @@ namespace Desync.UI
         /// same click, so the pointer lock still happens within the user gesture.
         public static void Start(RunMode m) { RunEvents.StartRun?.Invoke(m); }
 
-        /// The act whose boss ends the run: QUICK = act 1, CAMPAIGN / DAILY = RunRules.CampaignActs.
-        public static bool FinalAct => RunState.Act >= (RunState.Mode == RunMode.Quick ? 1 : RunRules.CampaignActs);
+        /// The act whose boss ends the run: QUICK / DAILY = act 1 (as the run manager plays them), CAMPAIGN = RunRules.CampaignActs.
+        public static bool FinalAct => RunState.Act >= (RunState.Mode == RunMode.Quick || RunState.Mode == RunMode.Daily ? 1 : RunRules.CampaignActs);
 
         /// "A1 · INFILTRATION", "A1 · AUDITOR". Allocates: call on change.
         public static string NodeLabel(RunNode n) =>
@@ -108,7 +108,7 @@ namespace Desync.UI
         };
         public static readonly string[] ActNames = { "LOBBY / RENDER FARM", "SERVER CORE", "ARCHITECT'S MIND" };
         public static readonly string[] BossNames = { "AUDITOR", "COMPILER", "ARCHITECT" };
-        public static readonly string[] ModeNames = { "CLASSIC", "QUICK BREACH", "CAMPAIGN BREACH", "DAILY BREACH" };
+        public static readonly string[] ModeNames = { "CLASSIC", "QUICK BREACH", "CAMPAIGN BREACH", "DAILY BREACH", "ENDLESS OVERCLOCK" };   // by RunMode
 
         public static string ActName(int act) => act >= 1 && act <= ActNames.Length ? ActNames[act - 1] : "";
         public static string BossName(int act) => act >= 1 && act <= BossNames.Length ? BossNames[act - 1] : "BOSS";

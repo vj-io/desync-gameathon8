@@ -8,6 +8,7 @@ using Desync.Enemies;
 using Desync.Flow;
 using Desync.Gen;
 using Desync.Net;
+using Desync.TestKit;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -210,15 +211,19 @@ namespace Desync.UI.Tests
             Assert.IsFalse(deep.IsOn, "locked: the click opens nothing");
             Assert.IsEmpty(_log, "locked: no run starts");
 
-            yield return Key(UnityEngine.InputSystem.Key.DownArrow);   // CLASSIC -> (DAILY, DEEP skipped) -> CAMPAIGN
-            Assert.AreEqual(0, title.Selected, "a locked Deep Layer is skipped by the keyboard like DAILY");
+            yield return Key(UnityEngine.InputSystem.Key.DownArrow);   // CLASSIC -> DAILY
+            Assert.AreEqual(TitleScreen.DailyItem, title.Selected);
+            yield return Key(UnityEngine.InputSystem.Key.DownArrow);   // DAILY -> (DEEP skipped) -> the next open entry
+            var save = SaveService.Data;
+            Assert.AreEqual(TimeAttackRooms.Unlocked(save) ? TitleScreen.TimeAttackItem : OverclockRun.Unlocked(save) ? TitleScreen.OverclockItem : TitleScreen.UnlocksItem,
+                            title.Selected, "a locked Deep Layer is skipped by the keyboard");
 
             OpenDeepLayer(0);
             ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true);
             yield return Frames(2);
             Assert.IsTrue(title.DeepOpen);
             Assert.AreEqual("DEEP LAYER", Txt("Title/Card/Mode4/Label"));
-            yield return Key(UnityEngine.InputSystem.Key.DownArrow);   // CLASSIC -> DEEP LAYER
+            yield return Key(UnityEngine.InputSystem.Key.DownArrow); yield return Key(UnityEngine.InputSystem.Key.DownArrow);   // CLASSIC -> DAILY -> DEEP LAYER
             Assert.AreEqual(TitleScreen.DeepItem, title.Selected);
             yield return Shot("m01_title_deep");
             yield return Key(UnityEngine.InputSystem.Key.Space);
@@ -362,6 +367,7 @@ namespace Desync.UI.Tests
         }
 
         static ArchitectBoss BareArchitect() => new GameObject("TestArchitectBoss").AddComponent<ArchitectBoss>();
+        static object _sink;
 
         [UnityTest, Timeout(120000)]
         public IEnumerator Hud_Compiler_Nodes_Swap_Telegraph_And_Halving()
@@ -455,6 +461,59 @@ namespace Desync.UI.Tests
                 Assert.AreEqual(4, a.Phase); Assert.AreEqual(BossEvents.Merged, a.EndingName);
                 Assert.AreEqual("ARCHITECT · MERGED", Txt("Hud/Boss/Label"));
                 Assert.IsFalse(Visible("Hud/BossChoice"));
+            }
+            finally { Object.Destroy(a.gameObject); }
+            yield return null;
+        }
+
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Hud_Architect_Offers_The_Desync_Way_And_Names_That_Ending()
+        {
+            var ui = UIManager.I;
+            ui.SetMode(UIManager.Mode.Room, true);
+            ui.TickAll(0.016f);
+            var a = BareArchitect();
+            var glyph = new GameObject("TestDesyncGlyph").transform;
+            glyph.SetParent(a.transform, false); glyph.localPosition = ArchitectBoss.DesyncAt; glyph.gameObject.SetActive(false);
+            a.desyncGlyph = glyph;
+            var player = new GameObject("TestPlayer"); player.transform.position = new Vector3(0f, 0f, -30f);
+            PlayerRef.Root = player.transform;
+            ArchitectBoss.OfferDesync = true;
+            try
+            {
+                yield return null; ui.TickAll(0.016f);
+                RoomClock.Time = 1f;
+                GameEvents.AccessGranted?.Invoke("s1"); GameEvents.AccessGranted?.Invoke("s2"); GameEvents.AccessGranted?.Invoke("s3");
+                yield return Frames(2); ui.TickAll(0.016f);
+                RoomClock.Time = 41.5f; yield return Frames(2); ui.TickAll(0.016f);   // survived: the final window
+                Assert.IsTrue(Visible("Hud/BossChoice"));
+                Assert.IsTrue(Visible("Hud/BossChoice/Desync"), "the third way is spelled out beside the two endings");
+                StringAssert.Contains("DESYNC", Txt("Hud/BossChoice/Desync"));
+                StringAssert.Contains("EXPOSED", Txt("Hud/BossChoice/Sever")); StringAssert.Contains("MERGED", Txt("Hud/BossChoice/Merge"));
+                yield return Shot("m06b_hud_architect_desync_way");
+
+                player.transform.position = glyph.position - Vector3.up * ArchitectBoss.DesyncAt.y;   // touch the glyph
+                RoomClock.Time += 0.1f; yield return Frames(2); ui.TickAll(0.016f);
+                Assert.AreEqual(ArchitectBoss.DesyncEnding, a.EndingName);
+                Assert.AreEqual("ARCHITECT · DESYNC", Txt("Hud/Boss/Label"));
+                Assert.AreEqual("NO LAYER HOLDS YOU", Txt("Hud/BossInfo/Label"));
+                Assert.IsFalse(Visible("Hud/BossChoice"));
+            }
+            finally { ArchitectBoss.OfferDesync = false; PlayerRef.Root = null; Object.Destroy(player); Object.Destroy(a.gameObject); }
+            yield return null;
+            ui.TickAll(0.016f);
+
+            // not offered: the panel keeps its two lines
+            a = BareArchitect();
+            try
+            {
+                yield return null; ui.TickAll(0.016f);
+                RoomClock.Time = 1f;
+                GameEvents.AccessGranted?.Invoke("s1"); GameEvents.AccessGranted?.Invoke("s2"); GameEvents.AccessGranted?.Invoke("s3");
+                yield return Frames(2); ui.TickAll(0.016f);
+                RoomClock.Time = 41.5f; yield return Frames(2); ui.TickAll(0.016f);
+                Assert.IsTrue(Visible("Hud/BossChoice"));
+                Assert.IsFalse(Visible("Hud/BossChoice/Desync"), "no third way until it is earned");
             }
             finally { Object.Destroy(a.gameObject); }
             yield return null;
@@ -681,40 +740,39 @@ namespace Desync.UI.Tests
             try
             {
                 yield return null;
-                long total = 0; const int ticks = 300;
+                const int ticks = 300;
                 void Step(int i)
                 {
                     RoomClock.Time += 0.016f; GameState.Chain = (i / 20) % 7; GameState.TraceCount = (i / 50) % 3; GameState.Melt = Mathf.Repeat(GameState.Melt + 0.4f, 100f);
                     GameState.Score += 5; GameState.Multiplier = 1f + 0.25f * GameState.Chain;
                 }
-                for (int i = 0; i < 40; i++) { Step(i); ui.TickAll(0.016f); }   // warm-up: first SetText grows TMP buffers
-                for (int i = 0; i < ticks; i++)
+                Action tick = () => ui.TickAll(0.016f);
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                // the same ticks from the same inputs twice: the first run warms (first use of pooled pops, tweens, text buffers),
+                // the second is counted
+                float t0 = RoomClock.Time, m0 = GameState.Melt; int s0 = GameState.Score;
+                int Measure()
                 {
-                    Step(i);
-                    long a = GC.GetTotalMemory(false);
-                    ui.TickAll(0.016f);
-                    long b = GC.GetTotalMemory(false);
-                    if (b > a) total += b - a;
+                    int sum = 0;
+                    for (int pass = 0; pass < 2; pass++)
+                    {
+                        RoomClock.Time = t0; GameState.Melt = m0; GameState.Score = s0;
+                        for (int i = 0; i < ticks; i++) { Step(i); if (pass == 0) tick(); else sum += Allocs.Beyond(tick); }
+                    }
+                    return sum;
                 }
-                Debug.Log("[UI-TEST] managed growth over " + ticks + " HUD ticks with the COMPILER bar, subtitle, decoy marker, DL tag: " + total + " bytes");
-                Assert.Less(total / (float)ticks, 64f, "the M3 HUD allocates per frame (COMPILER)");
+                int total = Measure();
+                Debug.Log("[UI-TEST] allocations over " + ticks + " HUD ticks with the COMPILER bar, subtitle, decoy marker, DL tag: " + total);
+                Assert.AreEqual(0, total, "the M3 HUD allocates per frame (COMPILER)");
                 Object.Destroy(comp.gameObject);
                 var arch = BareArchitect();
                 yield return null;
                 GameEvents.AccessGranted?.Invoke("s1"); GameEvents.AccessGranted?.Invoke("s2"); GameEvents.AccessGranted?.Invoke("s3");
                 RoomClock.Time += 30.5f; yield return Frames(2);   // survive done: the final window with gaps
-                for (int i = 0; i < 40; i++) { Step(i); ui.TickAll(0.016f); }
-                total = 0;
-                for (int i = 0; i < ticks; i++)
-                {
-                    Step(i);
-                    long a = GC.GetTotalMemory(false);
-                    ui.TickAll(0.016f);
-                    long b = GC.GetTotalMemory(false);
-                    if (b > a) total += b - a;
-                }
-                Debug.Log("[UI-TEST] managed growth over " + ticks + " HUD ticks with the ARCHITECT final window: " + total + " bytes");
-                Assert.Less(total / (float)ticks, 64f, "the M3 HUD allocates per frame (ARCHITECT)");
+                t0 = RoomClock.Time; m0 = GameState.Melt; s0 = GameState.Score;
+                total = Measure();
+                Debug.Log("[UI-TEST] allocations over " + ticks + " HUD ticks with the ARCHITECT final window: " + total);
+                Assert.AreEqual(0, total, "the M3 HUD allocates per frame (ARCHITECT)");
                 Object.Destroy(arch.gameObject);
             }
             finally

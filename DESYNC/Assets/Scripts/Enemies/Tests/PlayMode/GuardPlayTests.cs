@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
-using Unity.Profiling;
+using Desync.TestKit;
 using UnityEngine;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
@@ -356,10 +356,10 @@ namespace Desync.Enemies.Tests
             }
         }
 
-        /// Three officers chasing at once allocate nothing per frame: 300 ticks (900 officer updates and their cones) in one frame
-        /// add no more than the frame-to-frame noise of idle test frames (1 KB), where a single small allocation per update would
-        /// add over 20 KB (best of three such frames). GC.GetAllocatedBytesForCurrentThread reads 0 under Unity's Mono, so the
-        /// profiler's per-frame GC counter measures it.
+        static object _sink;
+
+        /// Three officers chasing at once allocate nothing per frame: 300 ticks (900 officer updates and their cones), every
+        /// allocation counted (Desync.TestKit.Allocs: the GC.Alloc profiler marker on this thread).
         [UnityTest]
         public IEnumerator ThreeChasingAllocateNothing()
         {
@@ -389,31 +389,13 @@ namespace Desync.Enemies.Tests
             }
             try
             {
-                using (var rec = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame"))
-                {
-                    long idle = 0;
-                    for (int i = 0; i < 22; i++)
-                    {
-                        yield return null;
-                        if (i >= 2) idle = Math.Max(idle, rec.LastValue);
-                    }
-                    var junk = new byte[8][];   // instrument check: 128 KB shows in its frame
-                    for (int i = 0; i < junk.Length; i++) junk[i] = new byte[16384];
-                    yield return null;
-                    Assert.Greater(rec.LastValue, idle + 65536, "the GC counter sees allocations");
-                    GC.KeepAlive(junk);
-                    // best of three bursts: an allocation per update shows in every one, the editor's occasional spike does not
-                    long burst = long.MaxValue;
-                    for (int k = 0; k < 3; k++)
-                    {
-                        Burst(300);
-                        yield return null;
-                        burst = Math.Min(burst, rec.LastValue);
-                    }
-                    Debug.Log($"[DESYNC] guards GC: idle frame max {idle} B, best burst frame (300 ticks x 3 officers) {burst} B");
-                    Assert.IsTrue(rec.Valid, "GC counter unavailable");
-                    Assert.LessOrEqual(burst, idle + 1024, "officer updates allocate");
-                }
+                yield return null;
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                Action tick = () => Burst(1);
+                int extra = 0;
+                for (int i = 0; i < 300; i++) extra += Allocs.Beyond(tick);
+                Debug.Log($"[DESYNC] guards: allocations in 300 ticks x 3 officers = {extra}");
+                Assert.AreEqual(0, extra, "officer updates allocate");
             }
             finally { foreach (var mb in quiet) if (mb) mb.enabled = true; }
             foreach (var g in gs) Assert.IsTrue(g.IsChasing, "all three still chasing");

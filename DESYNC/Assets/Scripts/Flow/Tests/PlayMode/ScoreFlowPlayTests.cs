@@ -5,6 +5,7 @@ using Desync.Enemies;
 using Desync.Net;
 using Desync.Player;
 using Desync.Rules;
+using Desync.TestKit;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -21,11 +22,11 @@ namespace Desync.Flow.Tests
         Scene scene;
         GameObject player;
         readonly Dictionary<string, string> prefs = new Dictionary<string, string>();
-        readonly List<ScorePop> pops = new List<ScorePop>();
-        readonly List<string> texts = new List<string>();
-        readonly List<DeathInfo> deaths = new List<DeathInfo>();
-        readonly List<RoomReport> reports = new List<RoomReport>();
-        readonly List<string> grazes = new List<string>();
+        readonly List<ScorePop> pops = new List<ScorePop>(256);   // sized up front: the zero-GC test counts every allocation
+        readonly List<string> texts = new List<string>(256);
+        readonly List<DeathInfo> deaths = new List<DeathInfo>(64);
+        readonly List<RoomReport> reports = new List<RoomReport>(64);
+        readonly List<string> grazes = new List<string>(64);
         int resets;
 
         [UnitySetUp]
@@ -260,7 +261,10 @@ namespace Desync.Flow.Tests
             Assert.AreEqual(2, GameState.DeathsInRoom);
         }
 
-        /// Zero managed allocations per frame from Flow + Player while scoring and during the recap (other systems paused here, restored after).
+        static object _sink;
+
+        /// Zero managed allocations per frame from Flow + Player while scoring and during the recap (other systems paused here, restored after):
+        /// every Flow / Player Update + LateUpdate, counted exactly (Desync.TestKit.Allocs: a real frame also carries the runner's own).
         [UnityTest]
         public IEnumerator FlowAndPlayerDoNotAllocatePerFrame()
         {
@@ -273,26 +277,32 @@ namespace Desync.Flow.Tests
             try
             {
                 yield return null;
-                Assert.IsTrue(Flip());
-                long worst = 0;
-                for (int f = 0; f < 120; f++)   // spans the 1 s clean-flip credit and a REDLINE-free flip back
+                var frame = Allocs.Frame("Desync.Flow", "Desync.Player");
+                frame.Run();   // the bound calls' first run
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                // The same play runs twice: the first warms every path it reaches (a method's first run builds its string
+                // literals), then the room restarts and the second is counted.
+                int extra = 0;
+                for (int pass = 0; pass < 2; pass++)
                 {
-                    if (f == 30) Flip();
-                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    Assert.IsTrue(Flip());
+                    for (int f = 0; f < 120; f++)   // spans the 1 s clean-flip credit and a REDLINE-free flip back
+                    {
+                        if (f == 30) Flip();
+                        if (pass == 0) frame.Run(); else extra += frame.Count();
+                    }
+                    Assert.GreaterOrEqual(ScoreKeeper.I.Log.Count, 3, "flips were logged");
+                    PlayerRef.Kill(DeathCause.Melt);
+                    for (int f = 0; f < 30; f++) { if (pass == 0) frame.Run(); else extra += frame.Count(); }
+                    Assert.AreEqual(GameState.PhaseKind.Recap, GameState.Phase);
+                    if (pass == 1) break;
+                    int r = resets;
+                    GameEvents.RestartRequested?.Invoke();
+                    yield return Until(() => resets > r, 2f, "RoomReset after a restart request");
                     yield return null;
-                    worst = Math.Max(worst, GC.GetAllocatedBytesForCurrentThread() - before);
                 }
-                Assert.GreaterOrEqual(ScoreKeeper.I.Log.Count, 3, "flips were logged");
-                PlayerRef.Kill(DeathCause.Melt);
-                for (int f = 0; f < 30; f++)
-                {
-                    long before = GC.GetAllocatedBytesForCurrentThread();
-                    yield return null;
-                    worst = Math.Max(worst, GC.GetAllocatedBytesForCurrentThread() - before);
-                }
-                Assert.AreEqual(GameState.PhaseKind.Recap, GameState.Phase);
-                Debug.Log("[DESYNC] flow+player GC per frame, worst = " + worst + " B");
-                Assert.AreEqual(0, worst, "managed bytes allocated in one frame");
+                Debug.Log("[DESYNC] flow+player: allocations in 150 frames = " + extra);
+                Assert.AreEqual(0, extra, "managed allocations in Flow + Player frames: " + frame.Offenders);
             }
             finally { foreach (var mb in off) if (mb) mb.enabled = true; }
         }

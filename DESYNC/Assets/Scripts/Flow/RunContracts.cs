@@ -8,7 +8,7 @@ namespace Desync.Flow
     // CONTRACT (M2): run state + run events shared by the run manager (writer) and the run UI (reader / requester).
     // Signatures frozen; the run manager owns the behaviour.
 
-    public enum RunMode { Classic, Quick, Campaign, Daily }
+    public enum RunMode { Classic, Quick, Campaign, Daily, Overclock }
     public enum RunPhase { None, Map, Room, Draft, Market, Cooldown, Results, Over }
 
     public struct MarketItem

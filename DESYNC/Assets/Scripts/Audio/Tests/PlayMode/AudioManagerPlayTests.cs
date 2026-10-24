@@ -2,7 +2,8 @@ using System;
 using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
-using Unity.Profiling;
+using UnityEngine.TestTools.Constraints;
+using Is = UnityEngine.TestTools.Constraints.Is;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -227,80 +228,60 @@ namespace Desync.Audio.Tests
             return false;
         }
 
-        /// GC.GetAllocatedBytesForCurrentThread reads 0 under Unity's Mono, so measure with the profiler's per-frame GC counter instead:
-        /// run a burst of Update() + SFX events inside ONE frame and compare that frame with idle baseline frames.
+        static object _sink;
+
+        /// Update() and every SFX handler, called in bursts, make no GC allocation (Unity's GC.Alloc constraint, which counts every
+        /// allocation on this thread; GC.GetAllocatedBytesForCurrentThread reads 0 under Unity's Mono).
         [UnityTest]
         public IEnumerator UpdateAndEventPathsAllocateNothing()
         {
             GameState.IceAlive = 1;                          // ICE hum running (and moving) for the whole measurement
             LayerState.Set(true);
-            using (var rec = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame"))
+            var upd = (Action)Delegate.CreateDelegate(typeof(Action), m, typeof(AudioManager).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance));
+            void Burst(int n)
             {
-                var upd = (Action)Delegate.CreateDelegate(typeof(Action), m, typeof(AudioManager).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance));
-                void Burst(int n)
+                for (int i = 0; i < n; i++)
                 {
-                    for (int i = 0; i < n; i++)
-                    {
-                        GameState.Melt = 50f + (i % 50);
-                        GameState.InHack = (i & 64) != 0;
-                        GameState.NearestIce = Vector3.one * (i % 15);
-                        GameState.GlitchCountdown = i % 90 < 60 ? 3f - (i % 60) * 0.05f : -1f;
-                        upd();
-                        GameEvents.Footstep?.Invoke();
-                        GameEvents.HackTick?.Invoke(i % 5);
-                        GameEvents.CameraTick?.Invoke(Vector3.one * i);
-                        GameEvents.IceSpawned?.Invoke(Vector3.zero);
-                        GameEvents.Flipped?.Invoke((i & 1) == 0);
-                    }
-                    GameState.GlitchCountdown = -1f; GameState.InHack = false;
+                    GameState.Melt = 50f + (i % 50);
+                    GameState.InHack = (i & 64) != 0;
+                    GameState.NearestIce = Vector3.one * (i % 15);
+                    GameState.GlitchCountdown = i % 90 < 60 ? 3f - (i % 60) * 0.05f : -1f;
+                    upd();
+                    GameEvents.Footstep?.Invoke();
+                    GameEvents.HackTick?.Invoke(i % 5);
+                    GameEvents.CameraTick?.Invoke(Vector3.one * i);
+                    GameEvents.IceSpawned?.Invoke(Vector3.zero);
+                    GameEvents.Flipped?.Invoke((i & 1) == 0);
                 }
-
-                Burst(50);                       // warm-up: first-call JIT, lazy statics
-                for (int i = 0; i < 5; i++) yield return null;
-                Assert.IsTrue(rec.Valid, "GC counter unavailable");
-
-                long baseline = 0;
-                for (int i = 0; i < 20; i++) { yield return null; baseline = Math.Max(baseline, rec.LastValue); }
-
-                var junk = new byte[8][];        // instrument sanity: 8 x 16 KB must be visible in the frame counter
-                for (int i = 0; i < 8; i++) junk[i] = new byte[16384];
-                yield return null;
-                long seen = rec.LastValue;
-                GC.KeepAlive(junk);
-                Assert.Greater(seen, baseline + 100000, "GC counter does not register a 128 KB allocation (baseline " + baseline + ", saw " + seen + ")");
-
-                // Call AudioManager's own handlers directly (other systems also subscribe to GameEvents and may allocate; not our budget).
-                T H<T>(string name) where T : Delegate => (T)Delegate.CreateDelegate(typeof(T), m, typeof(AudioManager).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance));
-                var foot = H<Action>("OnFootstep");
-                var tick = H<Action<int>>("OnHackTick");
-                var cam = H<Action<Vector3>>("OnCameraTick");
-                var ice = H<Action<Vector3>>("OnIceSpawned");
-                var flip = H<Action<bool>>("OnFlipped");
-                var wind = H<Action<Vector3>>("OnIceWindup");
-                var cleared = H<Action<RoomResult>>("OnRoomCleared");
-                var popt = H<Action<string, Color>>("OnPopText");
-                var parts = new (string name, Action a)[]
-                {
-                    ("Update", () => { for (int i = 0; i < 500; i++) { GameState.Melt = 50f + (i % 50); GameState.InHack = (i & 64) != 0; GameState.NearestIce = Vector3.one * (i % 15); GameState.GlitchCountdown = i % 90 < 60 ? 3f - (i % 60) * 0.05f : -1f; upd(); } GameState.InHack = false; GameState.GlitchCountdown = -1f; }),
-                    ("Footstep", () => { for (int i = 0; i < 500; i++) foot(); }),
-                    ("HackTick", () => { for (int i = 0; i < 500; i++) tick(i % 5); }),
-                    ("CameraTick", () => { for (int i = 0; i < 500; i++) cam(Vector3.one * i); }),
-                    ("IceSpawned+Windup", () => { for (int i = 0; i < 500; i++) { ice(Vector3.zero); wind(Vector3.one); } }),
-                    ("Flipped", () => { for (int i = 0; i < 500; i++) flip((i & 1) == 0); }),
-                    ("RoomCleared+Pop", () => { for (int i = 0; i < 100; i++) { cleared(new RoomResult { grade = 'S' }); popt("GHOST x3", Color.white); } }),
-                };
-                long burst = 0;
-                string worst, worstName = "";
-                foreach (var (name, a) in parts)
-                {
-                    yield return null;
-                    a();
-                    yield return null;
-                    worst = name + " " + rec.LastValue + " B";   // cheap: only used in the failure message
-                    if (rec.LastValue > burst) { burst = rec.LastValue; worstName = worst; }
-                }
-                Assert.LessOrEqual(burst, baseline + 512, "audio Update + SFX handlers allocated: worst part " + worstName + ", idle frame max " + baseline + " B");
+                GameState.GlitchCountdown = -1f; GameState.InHack = false;
             }
+
+            Burst(50);                       // warm-up: first-call JIT, lazy statics
+            yield return null;
+            Assert.That(() => { _sink = new byte[64]; }, Is.AllocatingGCMemory(), "the instrument sees a known allocation");
+
+            // Call AudioManager's own handlers directly (other systems also subscribe to GameEvents and may allocate; not our budget).
+            T H<T>(string name) where T : Delegate => (T)Delegate.CreateDelegate(typeof(T), m, typeof(AudioManager).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance));
+            var foot = H<Action>("OnFootstep");
+            var tick = H<Action<int>>("OnHackTick");
+            var cam = H<Action<Vector3>>("OnCameraTick");
+            var ice = H<Action<Vector3>>("OnIceSpawned");
+            var flip = H<Action<bool>>("OnFlipped");
+            var wind = H<Action<Vector3>>("OnIceWindup");
+            var cleared = H<Action<RoomResult>>("OnRoomCleared");
+            var popt = H<Action<string, Color>>("OnPopText");
+            var parts = new (string name, Action a)[]
+            {
+                ("Update", () => { for (int i = 0; i < 500; i++) { GameState.Melt = 50f + (i % 50); GameState.InHack = (i & 64) != 0; GameState.NearestIce = Vector3.one * (i % 15); GameState.GlitchCountdown = i % 90 < 60 ? 3f - (i % 60) * 0.05f : -1f; upd(); } GameState.InHack = false; GameState.GlitchCountdown = -1f; }),
+                ("Footstep", () => { for (int i = 0; i < 500; i++) foot(); }),
+                ("HackTick", () => { for (int i = 0; i < 500; i++) tick(i % 5); }),
+                ("CameraTick", () => { for (int i = 0; i < 500; i++) cam(Vector3.one * i); }),
+                ("IceSpawned+Windup", () => { for (int i = 0; i < 500; i++) { ice(Vector3.zero); wind(Vector3.one); } }),
+                ("Flipped", () => { for (int i = 0; i < 500; i++) flip((i & 1) == 0); }),
+                ("RoomCleared+Pop", () => { for (int i = 0; i < 100; i++) { cleared(new RoomResult { grade = 'S' }); popt("GHOST x3", Color.white); } }),
+            };
+            foreach (var (name, a) in parts) a();   // each part's first run
+            foreach (var (name, a) in parts) Assert.That(new TestDelegate(a), Is.Not.AllocatingGCMemory(), "audio " + name + " allocated");
         }
     }
 }

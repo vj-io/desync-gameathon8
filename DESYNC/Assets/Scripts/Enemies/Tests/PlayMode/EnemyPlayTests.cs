@@ -1,4 +1,5 @@
 using System.Collections;
+using Desync.TestKit;
 using NUnit.Framework;
 using Unity.AI.Navigation;
 using UnityEngine;
@@ -331,6 +332,8 @@ namespace Desync.Enemies.Tests
             Assert.IsFalse(GameState.Cinematic);
         }
 
+        static object _sink;
+
         /// Zero managed allocations per frame from the enemy systems (other workstreams' behaviours disabled).
         [UnityTest]
         public IEnumerator EnemySystemsDoNotAllocatePerFrame()
@@ -367,17 +370,14 @@ namespace Desync.Enemies.Tests
                 Assert.AreEqual(1, _spawned);
                 yield return Run(0.3f);
 
-                long worst = 0;
-                for (int f = 0; f < 90; f++)
-                {
-                    long before = System.GC.GetAllocatedBytesForCurrentThread();
-                    RoomClock.Time += Time.deltaTime;
-                    yield return null;
-                    long d = System.GC.GetAllocatedBytesForCurrentThread() - before;
-                    if (d > worst) worst = d;
-                }
-                Debug.Log($"[DESYNC] enemies GC per frame, worst = {worst} B");
-                Assert.AreEqual(0, worst, "managed bytes allocated in one frame");
+                // 90 frames of every enemy's Update + LateUpdate, counted exactly (Allocs: a real frame also carries the runner's own)
+                var frame = Allocs.Frame("Desync.Enemies");
+                for (int f = 0; f < 5; f++) { RoomClock.Time += Time.deltaTime; frame.Run(); }   // the bound calls' first run
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                int extra = 0;
+                for (int f = 0; f < 90; f++) { RoomClock.Time += Time.deltaTime; extra += frame.Count(); }
+                Debug.Log($"[DESYNC] enemies: allocations in 90 frames = {extra}");
+                Assert.AreEqual(0, extra, "managed allocations in enemy frames: " + frame.Offenders);
             }
             finally { foreach (var mb in disabled) if (mb) mb.enabled = true; }
         }

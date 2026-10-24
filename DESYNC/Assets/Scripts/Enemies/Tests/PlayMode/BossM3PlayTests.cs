@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
-using Unity.Profiling;
+using Desync.TestKit;
 using UnityEngine;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
@@ -439,13 +439,9 @@ namespace Desync.Enemies.Tests
 
         // ---------------------------------------------------------------------------------------------------- budgets
 
-        /// Both bosses mid-fight (COMPILER P3, ARCHITECT P2 with scrambled screens): a burst of 120 Update calls each, plus
-        /// 120 LateUpdate passes over the scrambled screens, in one frame adds no more than the frame-to-frame noise of idle
-        /// frames (1 KB), where one small allocation per call would add several KB; best of three bursts, since the editor's
-        /// harness noise (~40-60 KB a frame) sometimes spikes in a single frame.
-        /// GC.GetAllocatedBytesForCurrentThread reads 0 under Unity's Mono, so the profiler's per-frame GC counter measures it.
-        /// The LateUpdate passes run on a still clock: a redraw goes through TMP_Text.SetCharArray, which builds a debug string
-        /// in the editor only (#if UNITY_EDITOR), as every terminal's own scrambled screen does; not a player-build cost.
+        /// Both bosses mid-fight (COMPILER P3, ARCHITECT P2 with scrambled screens): 120 frames of their Update and the
+        /// ARCHITECT's LateUpdate (which redraws the scrambled screens) allocate nothing, every allocation counted
+        /// (Desync.TestKit.Allocs; it leaves out TMP_Text.SetCharArray's editor-only debug string, not a player cost).
         [UnityTest]
         public IEnumerator BossesDoNotAllocatePerFrame()
         {
@@ -466,9 +462,8 @@ namespace Desync.Enemies.Tests
                     RoomClock.Time += 1f / 60f;
                     cu();
                     au();
+                    al();   // redraws the screens for the new tick
                 }
-                al();   // draws once for the new tick, then the key check alone
-                for (int i = 0; i < n; i++) al();
             }
             Burst(30);   // warm-up: first calls, lazy arrays
             var quiet = new System.Collections.Generic.List<MonoBehaviour>();   // the self-booting managers (UI, run, audio) are not ours
@@ -479,37 +474,19 @@ namespace Desync.Enemies.Tests
             }
             try
             {
-                using (var rec = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame"))
-                {
-                    // Idle frames (bosses running once per frame) carry ~40-60 KB of test-harness noise; the recorder's first
-                    // frame spikes, so it is skipped.
-                    long idle = 0;
-                    for (int i = 0; i < 22; i++)
-                    {
-                        RoomClock.Time += 1f / 60f;
-                        yield return null;
-                        if (i >= 2) idle = Math.Max(idle, rec.LastValue);
-                    }
-                    var junk = new byte[8][];   // instrument check: 128 KB shows in its frame
-                    for (int i = 0; i < junk.Length; i++) junk[i] = new byte[16384];
-                    yield return null;
-                    Assert.Greater(rec.LastValue, idle + 65536, "the GC counter sees allocations");
-                    GC.KeepAlive(junk);
-                    long burst = long.MaxValue;
-                    for (int k = 0; k < 3; k++)
-                    {
-                        Burst(120);
-                        yield return null;
-                        burst = Math.Min(burst, rec.LastValue);
-                    }
-                    Debug.Log($"[DESYNC] bosses GC: idle frame max {idle} B, best burst frame {burst} B");
-                    Assert.IsTrue(rec.Valid, "GC counter unavailable");
-                    Assert.LessOrEqual(burst, idle + 1024, "boss updates allocate");
-                }
+                yield return null;
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                Action frame = () => Burst(1);
+                int extra = 0;
+                for (int i = 0; i < 120; i++) extra += Allocs.Beyond(frame);
+                Debug.Log($"[DESYNC] bosses: allocations in 120 frames = {extra}");
+                Assert.AreEqual(0, extra, "boss updates allocate");
             }
             finally { foreach (var mb in quiet) if (mb) mb.enabled = true; }
             Assert.IsTrue(GameState.Alive);
         }
+
+        static object _sink;
 
         static Action Bind(object target, string method) =>
             (Action)Delegate.CreateDelegate(typeof(Action), target, target.GetType().GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance));

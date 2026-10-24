@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using Desync.Net;
+using Desync.TestKit;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -490,31 +491,64 @@ namespace Desync.UI.Tests
             LogAssert.ignoreFailingMessages = false;
         }
 
+        // ================================================================== the flip key as bound
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Prompts_That_Mean_Flip_Name_The_Bound_Key()
+        {
+            var ui = UIManager.I; var story = Screen<StoryScreen>("_story"); var guide = Screen<StoryGuide>("_guide"); var endings = Screen<EndingSequence>("_endingSeq");
+            var skipOf = (Func<object, string>)(o => ((TMPro.TMP_Text)o.GetType().GetField("_skip", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(o)).text);
+            var flip = Rebinds.Find("flip");
+            try
+            {
+                Assert.AreEqual(StoryScript.I.guide.flip, Rebinds.FlipText(StoryScript.I.guide.flip), "SPACE while it is the flip key");
+                Assert.IsTrue(Rebinds.Set(flip, false, "<Keyboard>/f", out _));
+                ui.SetMode(UIManager.Mode.Room, true);
+                typeof(StoryGuide).GetMethod("Switch", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(guide, new object[] { StoryGuide.Step.Flip });
+                StringAssert.Contains("Press F.", guide.Line, "the Room 1 prompt names the bound key");
+                StringAssert.DoesNotContain("SPACE", guide.Line);
+                Assert.IsTrue(endings.Play("Exposed", null));
+                StringAssert.Contains("HOLD F", skipOf(endings), "an ending's skip hint: the hold is the flip key");
+                endings.Finish(false);
+                ui.SetMode(UIManager.Mode.Title, true);
+                story.Play();
+                StringAssert.Contains("HOLD F", skipOf(story), "the story's skip hint too");
+                yield return null;
+            }
+            finally { Rebinds.Reset(flip, false); }
+            Assert.AreEqual("SPACE", Rebinds.Label(flip, false));
+        }
+
         // ================================================================== allocation
         [UnityTest, Timeout(300000)]
         public IEnumerator Cinematic_Allocates_Nothing_Per_Frame()
         {
             var ui = UIManager.I; var story = Screen<StoryScreen>("_story");
             _camGo.tag = "MainCamera";   // camera moves and glyph rain run too
+            Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+            Action tick = () => ui.TickAll(0.016f);
             for (int pass = 0; pass < 2; pass++)   // pass 0 warms TMP buffers and tween pools
             {
                 ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true);
                 Click("Title/Card/Mode" + TitleScreen.StoryItem);
                 yield return null;
-                long total = 0; int ticks = 0;
+                // A cue tick fires a beat or shows / hides a caption (Unity's own SetActive bookkeeping may allocate there); every
+                // other tick is the steady animation and must allocate nothing.
+                int ticks = 0, extra = 0, cueTicks = 0, cueExtra = 0;
                 while (!story.Waking && ticks < 20000)
                 {
-                    long a = GC.GetTotalMemory(false);
-                    ui.TickAll(0.016f);
-                    long b = GC.GetTotalMemory(false);
-                    if (b > a) total += b - a;
+                    int beat = story.BeatIndex, shown = story.Root.GetComponentsInChildren<Graphic>(false).Length;
+                    int n = Allocs.Beyond(tick);
+                    if (story.BeatIndex != beat || story.Root.GetComponentsInChildren<Graphic>(false).Length != shown) { cueTicks++; cueExtra += n; } else extra += n;
                     if (++ticks % 250 == 0) yield return null;   // let tweens and labels run between bursts
                 }
                 Assert.IsTrue(story.Waking, "the story reached its end");
                 if (pass == 0) continue;
-                Debug.Log("[STORY-TEST] managed growth over " + ticks + " cinematic ticks: " + total + " bytes");
-                Assert.Less(total / (float)ticks, 64f, "the cinematic allocates per frame");
+                Debug.Log("[STORY-TEST] allocations over " + ticks + " cinematic ticks: " + extra + " between cues, " + cueExtra + " in the " + cueTicks + " cue ticks");
+                Assert.AreEqual(0, extra, "the cinematic allocates between cues");
+                Assert.LessOrEqual(cueExtra, cueTicks, "a cue allocates at most once on average");
             }
         }
+
+        static object _sink;
     }
 }

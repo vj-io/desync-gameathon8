@@ -5,6 +5,7 @@ using Desync.Content;
 using Desync.Gen;
 using Desync.Net;
 using Desync.Player;
+using Desync.TestKit;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -299,6 +300,8 @@ namespace Desync.Flow.Tests
             Assert.AreEqual(0f, GameState.Melt, 0.01f, "Cold Boot");
         }
 
+        static object _sink;
+
         [UnityTest]
         public IEnumerator LiveModifiers_AreRefoldedEachFrame_WithoutAllocating()
         {
@@ -318,19 +321,18 @@ namespace Desync.Flow.Tests
             {
                 Assert.IsTrue(PlayerRef.Root.GetComponent<FlipController>().TryFlip(), "into SOURCE: the melt (a condition input) moves every frame");
                 yield return null;
-                long worst = 0;
+                // every Flow / Player Update + LateUpdate, counted exactly (Desync.TestKit.Allocs: a real frame also carries the runner's own)
+                var frame = Allocs.Frame("Desync.Flow", "Desync.Player");
+                frame.Run();   // the bound calls' first run
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                int extra = 0;
                 float m0 = GameState.Melt;
-                for (int f = 0; f < 60; f++)
-                {
-                    long before = GC.GetAllocatedBytesForCurrentThread();
-                    yield return null;
-                    worst = Math.Max(worst, GC.GetAllocatedBytesForCurrentThread() - before);
-                }
+                for (int f = 0; f < 60; f++) extra += frame.Count();
                 Assert.Greater(GameState.Melt, m0);
                 Assert.Greater(GameState.Melt, 75f);
                 Assert.AreEqual(1.5f, GameState.Mods.ScoreMult, 1e-4f, "Fever Code live at melt >= 75");
-                Debug.Log("[DESYNC] run live modifiers GC per frame, worst = " + worst + " B");
-                Assert.AreEqual(0, worst, "managed bytes allocated in one frame");
+                Debug.Log("[DESYNC] run live modifiers: allocations in 60 frames = " + extra);
+                Assert.AreEqual(0, extra, "managed allocations in Flow + Player frames: " + frame.Offenders);
             }
             finally
             {

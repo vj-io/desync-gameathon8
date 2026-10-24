@@ -9,12 +9,12 @@ namespace Desync.UI
     ///   AUDITOR    uplink countdown in P3 (in HudScreen.TickBoss, unchanged).
     ///   COMPILER   node count, the wall-swap countdown with its 1 s telegraph (red + flicker), the P3 halving countdown.
     ///   ARCHITECT  strings left, the P3 survive timer, the final-string timer, the gaze-gap cue (READY 0.6 s ahead, FLIP NOW while the gap
-    ///              is open) and the two ending choices; its lines go out as subtitles.
+    ///              is open) and the ending choices (a third, DESYNC, once ArchitectBoss.OfferDesync opens it); its lines go out as subtitles.
     /// Same rules as the rest of the HUD: polled from the boss component, text rewritten only when a value changes, no per-frame allocation.
     public sealed partial class HudScreen
     {
         GameObject _infoGo, _clockGo, _choiceGo; CanvasGroup _clockGroup;
-        TMP_Text _info, _clockCap, _clockNum, _choiceA, _choiceB;
+        TMP_Text _info, _clockCap, _clockNum, _choiceA, _choiceB, _choiceC;
         GlitchLabel _cue; GameObject _cueGo;
         LiveText _infoL, _clockL;
         int _bossKind, _bossKey = -1, _clock10 = -2, _info10 = -2, _cueState = -1; bool _gapSaid;
@@ -24,6 +24,7 @@ namespace Desync.UI
         {
             "ARCHITECT · P1 · THE GAZE", "ARCHITECT · P2 · THE STRINGS", "ARCHITECT · P3 · DESYNC", "ARCHITECT · P3 · FINAL STRING", "ARCHITECT · ",
         };
+        static readonly string[] EndingLabels = { "EXPOSED", "MERGED", "DESYNC" }, EndingInfo = { "THE STRING IS CUT", "YOU STAYED", "NO LAYER HOLDS YOU" };   // by ending
         static readonly string[] Pips = MakePips(Compiler.Nodes), StringPips = MakePips(ArchitectBoss.Terminals);
 
         internal bool BossInfoOn => _infoGo && _infoGo.activeSelf;
@@ -67,6 +68,8 @@ namespace Desync.UI
             UIKit.Place(_choiceA.rectTransform, Anc.T, new Vector2(0, -8), new Vector2(1040, 36));
             _choiceB = UIKit.Text(cb.transform, "Merge", hud, 28, UIKit.Magenta, TextAlignmentOptions.Center, "NO FLIP · LET THE TIMER RUN · MERGED"); _choiceB.fontStyle = FontStyles.Bold; _choiceB.characterSpacing = 3f;
             UIKit.Place(_choiceB.rectTransform, Anc.B, new Vector2(0, 8), new Vector2(1040, 36));
+            _choiceC = UIKit.Text(cb.transform, "Desync", hud, 28, UIKit.Cyan, TextAlignmentOptions.Center, "WALK BEHIND THE FACE · TOUCH THE GLYPH · DESYNC"); _choiceC.fontStyle = FontStyles.Bold; _choiceC.characterSpacing = 3f;
+            UIKit.Place(_choiceC.rectTransform, Anc.C, Vector2.zero, new Vector2(1040, 36));
             _choiceGo.SetActive(false);
 
             _infoL = new LiveText(_info); _clockL = new LiveText(_clockNum);
@@ -84,7 +87,7 @@ namespace Desync.UI
             if (id == ArchitectBoss.Id && (phase == 2 || phase == 3)) ArchitectLines.SayPhase(phase);
         }
 
-        /// BossEvents.Ending ("Exposed" | "Merged"): the ARCHITECT's last line.
+        /// BossEvents.Ending ("Exposed" | "Merged" | "Desync"): the ARCHITECT's last line.
         public void OnBossEnding(string ending)
         {
             if (!string.IsNullOrEmpty(ending)) ArchitectLines.SayEnding(ending.ToLowerInvariant());
@@ -142,12 +145,13 @@ namespace Desync.UI
             bool final = ph == 3 && b.FinalRemaining >= 0f;
             int stage = ph == 3 ? (final ? 3 : 2) : ph == 4 ? 4 : ph - 1;   // 0 gaze, 1 strings, 2 survive, 3 final string, 4 ending
             int left = b.StringsLeft;
-            int key = stage * 100 + left * 10 + (EnemyFlags.BossHeat ? 1 : 0) + (stage == 4 && b.EndingName == BossEvents.Merged ? 2 : 0);
+            int ending = stage != 4 ? 0 : b.EndingName == BossEvents.Merged ? 1 : b.EndingName == ArchitectBoss.DesyncEnding ? 2 : 0;   // 0 Exposed
+            int key = stage * 100 + left * 10 + (EnemyFlags.BossHeat ? 1 : 0) + ending * 2;
             if (key != _bossKey)
             {
                 if (_bossKey >= 0 && _bossKey / 100 != stage) UIKit.Pop(ref _traceTw, _bossGo.transform, 1.2f, 0.3f);
                 _bossKey = key; _bossPhase = ph;
-                if (stage == 4) _bossText.SetText(ArchitectLabels[4] + (b.EndingName == BossEvents.Merged ? "MERGED" : "EXPOSED"));
+                if (stage == 4) _bossText.SetText(ArchitectLabels[4] + EndingLabels[ending]);
                 else _bossText.SetText(ArchitectLabels[stage]);
                 _bossText.color = stage >= 2 && stage < 4 ? UIKit.Danger : UIKit.Paper;
                 _info10 = -2;
@@ -170,14 +174,20 @@ namespace Desync.UI
                     else if (gap10 >= 0) _infoL.S("NEXT GAP IN ").I(gap10 / 10).C('.').I(gap10 % 10).Done();
                     else _infoL.S("NO GAP LEFT").Done();
                 }
-                else _infoL.S(b.EndingName == BossEvents.Merged ? "YOU STAYED" : "THE STRING IS CUT").Done();
+                else _infoL.S(EndingInfo[ending]).Done();
             }
 
             if (stage == 2) SetClock("SURVIVE", b.SurviveRemaining, b.SurviveRemaining <= 5f);
             else if (stage == 3) SetClock("FINAL STRING", b.FinalRemaining, b.FinalRemaining <= 3f);
             else HideClock();
 
-            if (_choiceGo.activeSelf != final) _choiceGo.SetActive(final);
+            if (_choiceGo.activeSelf != final)
+            {
+                _choiceGo.SetActive(final);
+                bool third = final && ArchitectBoss.OfferDesync && b.desyncGlyph;   // the boss shows the glyph on the same terms
+                _choiceC.gameObject.SetActive(third);
+                ((RectTransform)_choiceGo.transform).sizeDelta = new Vector2(1060, third ? 134 : 90);
+            }
 
             // gap cue: READY 0.6 s ahead, FLIP NOW while it is open (3 states + off), the line says itself once
             int cue = !final ? 0 : b.GapOpen ? 2 : b.GapIn > 0f && b.GapIn <= ArchitectBoss.GapWarn ? 1 : 0;

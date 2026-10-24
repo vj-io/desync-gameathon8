@@ -1,5 +1,6 @@
 using System.Collections;
 using System.IO;
+using Desync.TestKit;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -394,41 +395,43 @@ namespace Desync.UI.Tests
             GameState.RoomIndex = 1; GameState.RoomTDev = 25f; GameEvents.RoomStarted?.Invoke(1);
             var pops = new[] { new ScorePop { type = Rules.EventType.CleanFlip, points = 75, multiplier = 1.5f, label = "CLEAN FLIP" },
                                new ScorePop { type = Rules.EventType.Graze, points = 300, multiplier = 2f } };
-            long Measure(int ticks, System.Action<int> step)
+            Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+            int at = 0; System.Action<int> run = null;
+            System.Action tick = () => { run(at); ui.TickAll(0.016f); };
+            // Steady state: `start` sets the scene, the ticks run once to warm (the first use of each pooled pop, tween and text
+            // buffer), then `start` again and the same ticks are counted, TMP's editor-only text copies aside.
+            int Measure(int ticks, System.Action start, System.Action<int> step)
             {
-                for (int i = 0; i < 30; i++) { step(i); ui.TickAll(0.016f); }   // warm-up (first SetText grows TMP buffers)
-                long total = 0;
-                for (int i = 0; i < ticks; i++)
-                {
-                    long a = System.GC.GetTotalMemory(false);
-                    step(i); ui.TickAll(0.016f);
-                    long b = System.GC.GetTotalMemory(false);
-                    if (b > a) total += b - a;
-                }
+                run = step;
+                start(); for (at = 0; at < ticks; at++) tick();
+                start(); int total = 0;
+                for (at = 0; at < ticks; at++) total += Allocs.Beyond(tick);
                 return total;
             }
-            long hud = Measure(240, i =>
+            float t0 = RoomClock.Time, m0 = GameState.Melt; int s0 = GameState.Score;
+            int hud = Measure(240, () => { RoomClock.Time = t0; GameState.Melt = m0; GameState.Score = s0; GameState.Chain = 0; GameState.Multiplier = 1f; }, i =>
             {
                 RoomClock.Time += 0.016f; GameState.Melt = Mathf.Repeat(GameState.Melt + 0.5f, 100f);
                 if (i % 10 == 0) { GameEvents.Scored?.Invoke(pops[i / 10 % 2]); GameState.Score += 75; GameState.Chain = i / 10 % 7; GameState.Multiplier = 1f + 0.25f * GameState.Chain; }
             });
-            Debug.Log("[UI-TEST] managed growth over 240 HUD ticks: " + hud + " bytes");
-            Assert.Less(hud / 240f, 64f, "HUD allocates per frame");
+            Debug.Log("[UI-TEST] allocations over 240 HUD ticks: " + hud);
+            Assert.AreEqual(0, hud, "HUD allocates per frame");
 
-            GameEvents.DeathRecap?.Invoke(new DeathInfo { cause = DeathCause.Ice, killerId = "ICE-1", killerPos = new Vector3(3f, 0f, 4f), roomTime = 20f, nearMiss = "0.4 s from melt-safe" });
-            long recap = Measure(120, i => { });
-            Debug.Log("[UI-TEST] managed growth over 120 recap ticks: " + recap + " bytes");
-            Assert.Less(recap / 120f, 64f, "recap allocates per frame");
+            var death = new DeathInfo { cause = DeathCause.Ice, killerId = "ICE-1", killerPos = new Vector3(3f, 0f, 4f), roomTime = 20f, nearMiss = "0.4 s from melt-safe" };
+            int recap = Measure(120, () => GameEvents.DeathRecap?.Invoke(death), i => { });
+            Debug.Log("[UI-TEST] allocations over 120 recap ticks: " + recap);
+            Assert.AreEqual(0, recap, "recap allocates per frame");
             GameEvents.Rebooting?.Invoke(); GameEvents.RoomReset?.Invoke();
 
-            GameEvents.RoomReportReady?.Invoke(Report());
-            long res = Measure(240, i => { });   // the whole 2.6 s tally (ticks, stamp) and the end state
-            Debug.Log("[UI-TEST] managed growth over 240 results ticks: " + res + " bytes");
-            Assert.Less(res / 240f, 64f, "results tally allocates per frame");
+            int res = Measure(240, () => GameEvents.RoomReportReady?.Invoke(Report()), i => { });   // the whole 2.6 s tally (ticks, stamp) and the end state
+            Debug.Log("[UI-TEST] allocations over 240 results ticks: " + res);
+            Assert.AreEqual(0, res, "results tally allocates per frame");
             Assert.IsTrue(Results().Done);
             GameEvents.Rebooting?.Invoke(); GameEvents.RoomReset?.Invoke();
             yield return null;
         }
+
+        static object _sink;
 
         // ------------------------------------------------------------------ screenshots (best effort)
         static string ShotDir => Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", ".work", "ui2", "shots"));

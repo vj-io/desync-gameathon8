@@ -1,4 +1,5 @@
 using System.Collections;
+using Desync.TestKit;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -315,6 +316,8 @@ namespace Desync.Enemies.Tests
             Assert.That(RoomClock.Time, Is.InRange(0.9f, 1.15f), "force-flip after 1.0 s inside");
         }
 
+        static object _sink;
+
         /// AUDITOR in P3 with its hunters out, a tracker on the trail, FLICKER + GAZE running: no managed allocations per frame.
         [UnityTest]
         public IEnumerator BreachEnemiesDoNotAllocatePerFrame()
@@ -339,19 +342,16 @@ namespace Desync.Enemies.Tests
                 GameEvents.ExitOpened?.Invoke();
                 yield return Run(0.5f);
 
-                long worst = 0;
-                for (int f = 0; f < 90; f++)
-                {
-                    long before = System.GC.GetAllocatedBytesForCurrentThread();
-                    RoomClock.Time += Time.deltaTime;
-                    yield return null;
-                    long d = System.GC.GetAllocatedBytesForCurrentThread() - before;
-                    if (d > worst) worst = d;
-                }
-                Debug.Log($"[DESYNC] breach enemies GC per frame, worst = {worst} B");
+                // 90 frames of every enemy's Update + LateUpdate, counted exactly (Allocs: a real frame also carries the runner's own)
+                var frame = Allocs.Frame("Desync.Enemies");
+                for (int f = 0; f < 5; f++) { RoomClock.Time += Time.deltaTime; frame.Run(); }   // the bound calls' first run
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                int extra = 0;
+                for (int f = 0; f < 90; f++) { RoomClock.Time += Time.deltaTime; extra += frame.Count(); }
+                Debug.Log($"[DESYNC] breach enemies: allocations in 90 frames = {extra}");
                 Assert.AreEqual(3, a.Phase);
                 Assert.IsTrue(GameState.Alive);
-                Assert.AreEqual(0, worst, "managed bytes allocated in one frame");
+                Assert.AreEqual(0, extra, "managed allocations in enemy frames: " + frame.Offenders);
             }
             finally { foreach (var mb in disabled) if (mb) mb.enabled = true; }
         }
