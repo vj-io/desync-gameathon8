@@ -87,6 +87,7 @@ namespace Desync.Flow
                 GameEvents.PopText?.Invoke(GameState.DemoMode ? "DEMO MODE ON" : "DEMO MODE OFF", GameConfig.I.cyan);
             }
             if (!RoomInfo.Current) return;
+            if (GameState.Phase == GameState.PhaseKind.Results) { sawLock = false; return; }   // results own keys + cursor: no pause, no re-lock
 
             var mouse = Mouse.current;
             bool click = mouse != null && (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame);

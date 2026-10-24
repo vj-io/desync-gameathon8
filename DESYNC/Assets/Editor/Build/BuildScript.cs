@@ -22,6 +22,7 @@ namespace Desync.Build.Editor
     {
         const string ProbeFolder = "Assets/_BuildProbe";
         const double WebBudgetMB = 35;
+        const string BuildInfoPath = "Assets/Resources/build.txt";
 
         public static void WebRelease() => Run("WebRelease", BuildTarget.WebGL, release: true);
         public static void WebDev() => Run("WebDev", BuildTarget.WebGL, release: false);
@@ -53,6 +54,7 @@ namespace Desync.Build.Editor
                     Debug.LogWarning("[DESYNC] No scenes in Build Settings: building PROBE scene " + scenes[0]);
                 }
 
+                StampBuildInfo();
                 Configure(target, release);
 
                 var outDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "Builds", profile));
@@ -79,7 +81,7 @@ namespace Desync.Build.Editor
                 var mb = DirMB(outDir);
                 var shipped = target == BuildTarget.WebGL ? DirMB(Path.Combine(outDir, "Build")) : mb;
                 Debug.Log($"[DESYNC] Build succeeded {profile}: {mb:F1} MB total" +
-                          (target == BuildTarget.WebGL ? $" ({shipped:F1} MB in Build/, gzip)" : "") +
+                          (target == BuildTarget.WebGL ? $" ({shipped:F1} MB in Build/, brotli)" : "") +
                           $", {sw.Elapsed.TotalSeconds:F0}s, {outDir}");
                 if (target == BuildTarget.WebGL && release && shipped > WebBudgetMB)
                     Debug.LogWarning($"[DESYNC] Web build {shipped:F1} MB exceeds the {WebBudgetMB} MB budget (PRD 10.6)");
@@ -97,6 +99,29 @@ namespace Desync.Build.Editor
                     EditorUserBuildSettings.SwitchActiveBuildTarget(NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(previous)), previous);
             }
             if (failed) EditorApplication.Exit(1);
+        }
+
+        /// Writes Resources/build.txt ("<git short sha> <utc time>") so the player can read it as Desync.Net.BuildInfo. Runs before every player build.
+        public static void StampBuildInfo()
+        {
+            var sha = "nogit";
+            try
+            {
+                var psi = new ProcessStartInfo("git", "rev-parse --short HEAD")
+                {
+                    WorkingDirectory = Application.dataPath, RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                using (var p = Process.Start(psi))
+                {
+                    var o = p.StandardOutput.ReadToEnd().Trim();
+                    p.WaitForExit();
+                    if (p.ExitCode == 0 && o.Length > 0) sha = o;
+                }
+            }
+            catch (Exception e) { Debug.LogWarning("[DESYNC] build info: git unavailable (" + e.Message + ")"); }
+            File.WriteAllText(Path.Combine(Application.dataPath, "Resources", "build.txt"), sha + " " + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + "\n");
+            AssetDatabase.ImportAsset(BuildInfoPath);
+            Debug.Log("[DESYNC] build info stamped: " + sha);
         }
 
         // (a) scenes fresh: Desync.Levels.Editor.LevelBuilder.BuildAll, by reflection (LEVELS owns it; may not exist yet).
@@ -119,8 +144,8 @@ namespace Desync.Build.Editor
             if (target == BuildTarget.WebGL)
             {
                 // PRD 10.1
-                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
-                PlayerSettings.WebGL.decompressionFallback = true;
+                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;   // smaller than gzip; vercel.json serves Content-Encoding: br
+                PlayerSettings.WebGL.decompressionFallback = true;   // the loader still decompresses if a host drops the header
                 PlayerSettings.WebGL.dataCaching = true;
                 PlayerSettings.WebGL.nameFilesAsHashes = true;
                 PlayerSettings.WebGL.template = "PROJECT:Desync";

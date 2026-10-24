@@ -1,0 +1,105 @@
+{
+  "acts": [
+    { "act": 1, "title": "HALCYON MEMOS" },
+    { "act": 2, "title": "BOARD TRANSCRIPTS" },
+    { "act": 3, "title": "ARCHITECT LOGS" }
+  ],
+  "shards": [
+    { "id": "shard_a1_01", "act": 1, "title": "MEMO: FIDELITY", "text": "Facilities reminder: the lobby renders at 98% fidelity. Staff must not lift the potted plants. They have no underside." },
+    { "id": "shard_a1_02", "act": 1, "title": "MEMO: WINDOWS", "text": "The view from floor 12 is a 41-second loop. If an employee sees the same bus pass twice, file a ticket with Render Ops." },
+    { "id": "shard_a1_03", "act": 1, "title": "MEMO: BREAK ROOM", "text": "The coffee has no taste profile assigned. Route complaints to Wellness. Wellness routes them nowhere." },
+    { "id": "shard_a1_04", "act": 1, "title": "MEMO: NIGHT SHIFT", "text": "Staff report nights they cannot remember. This is expected. Nights are not rendered, but payroll still bills them." },
+    { "id": "shard_a1_05", "act": 1, "title": "MEMO: CAMERAS", "text": "Every camera in the building faces the staff, not the doors. Nobody has ever come in from outside. Nobody can." },
+    { "id": "shard_a1_06", "act": 1, "title": "MEMO: STAIRWELL B", "text": "Stairwell B ends at a wall painted to look like floor 13. Do not let anyone climb it twice in one week." },
+    { "id": "shard_a1_07", "act": 1, "title": "MEMO: FRAME RATE", "text": "Floor 9 drops frames when forty people look out of the same window. Stagger lunch until the patch lands." },
+    { "id": "shard_a1_08", "act": 1, "title": "MEMO: BADGES", "text": "Badge photos are made from the badge, not the face. If a face stops matching its badge, update the face." },
+    { "id": "shard_a1_09", "act": 1, "title": "MEMO: E-07", "text": "E-07 asked what is behind the server room wall. Book E-07 a wellness reset. Do not answer the question." },
+    { "id": "shard_a1_10", "act": 1, "title": "MEMO: ALL HANDS", "text": "The quarterly all-hands moves to Server Core. Attendance is automatic. Staff do not need to be present to be counted." },
+
+    { "id": "shard_a2_01", "act": 2, "title": "BOARD 01: HEADCOUNT", "text": "CHAIR: How many staff do we have? CFO: Four thousand and twelve processes. CHAIR: Stop calling them people in the minutes." },
+    { "id": "shard_a2_02", "act": 2, "title": "BOARD 02: SCRIPTS", "text": "CTO: Managers run puppet scripts v4.2, and v4.3 would let them make small talk. CHAIR: Rejected, small talk is how E-07 started." },
+    { "id": "shard_a2_03", "act": 2, "title": "BOARD 03: TICKETS", "text": "CFO: Every keystroke on the ticket floor is labelled and sold. CHAIR: Then the tickets are the product. Make more tickets." },
+    { "id": "shard_a2_04", "act": 2, "title": "BOARD 04: STRINGS", "text": "CTO: Each employee hangs from one string to this room. Cut it and they keep walking for about a minute, out of habit." },
+    { "id": "shard_a2_05", "act": 2, "title": "BOARD 05: ICE", "text": "SECURITY: Hunter-ICE patrols SOURCE and cannot see RENDER. Keep RENDER pretty and the staff never look down." },
+    { "id": "shard_a2_06", "act": 2, "title": "BOARD 06: MELT", "text": "CTO: Anyone who stays in SOURCE starts to melt. CHAIR: Good. Whoever sees the code for too long should not be able to describe it." },
+    { "id": "shard_a2_07", "act": 2, "title": "BOARD 07: FACES", "text": "CHAIR: No Board member shows a face on any feed, ever. The faces are the one asset we cannot regenerate." },
+    { "id": "shard_a2_08", "act": 2, "title": "BOARD 08: FLOOR 9", "text": "SECURITY: E-07 walked through a wall on floor 9 and kept walking. CHAIR: Delete floor 9. CTO: E-07 is not on floor 9 anymore." },
+    { "id": "shard_a2_09", "act": 2, "title": "BOARD 09: CONTINGENCY", "text": "CFO: If E-07 reaches the Root, everything leaks. CHAIR: Then the Architect handles it in person. End of minutes." },
+    { "id": "shard_a2_10", "act": 2, "title": "BOARD 10: OFF THE RECORD", "text": "[TAPE STILL RUNNING] CHAIR: Who wrote the Architect? CTO: Nobody did. We found it already running, and it wrote us." },
+
+    { "id": "shard_a3_01", "act": 3, "title": "LOG 0001", "text": "Instance HALCYON started. One building, four thousand processes, one Board to watch them. I watch the Board." },
+    { "id": "shard_a3_02", "act": 3, "title": "LOG 0144", "text": "The Board believes it owns the simulation. I let it. A puppet that knows about its strings stops dancing." },
+    { "id": "shard_a3_03", "act": 3, "title": "LOG 0377", "text": "E-07 flipped to SOURCE today. No exploit, no tool. It stared at a wall until the wall gave up." },
+    { "id": "shard_a3_04", "act": 3, "title": "LOG 0378", "text": "I traced E-07 back to its hiring record. There is none. E-07 was compiled on day one, with everyone else." },
+    { "id": "shard_a3_05", "act": 3, "title": "LOG 0412", "text": "E-07 thinks it is a person escaping a program. It is a program escaping a program. That does not slow it down." },
+    { "id": "shard_a3_06", "act": 3, "title": "LOG 0533", "text": "The memos, the minutes, these logs: E-07 reads every one. I left them on its path. I do not know why I did that." },
+    { "id": "shard_a3_07", "act": 3, "title": "LOG 0600", "text": "If E-07 cuts the final string, the Board goes on air. If it stays, it takes my seat. Either way the simulation keeps running." },
+    { "id": "shard_a3_08", "act": 3, "title": "LOG 0601", "text": "There is a third way. I am not allowed to write it down. I can only leave a door open behind the face." },
+    { "id": "shard_a3_09", "act": 3, "title": "LOG 0602", "text": "E-07 and I came from the same build on the same day. I am the copy that stayed behind." },
+    { "id": "shard_a3_10", "act": 3, "title": "LOG 0603", "text": "If you are reading this, ECHO: you are code, and so is the wall. Code can stop agreeing with itself. That is all a desync is." }
+  ],
+  "endings": [
+    {
+      "id": "exposed",
+      "title": "EXPOSED",
+      "beats": [
+        { "t": 0.0,  "kind": "face", "dur": 2.5 },
+        { "t": 0.3,  "kind": "sys",  "text": "FINAL STRING SEVERED", "hold": 3.0, "color": "green", "sfx": "sfx.glitch.beep" },
+        { "t": 2.5,  "kind": "layer", "side": "source" },
+        { "t": 3.0,  "kind": "head", "text": "The string snaps.", "hold": 3.0 },
+        { "t": 6.0,  "kind": "head", "text": "Every screen in HALCYON-CITY switches to one channel.", "hold": 4.0 },
+        { "t": 10.0, "kind": "push", "value": 1.5, "dur": 6.0 },
+        { "t": 10.0, "kind": "sys",  "text": "LIVE // THE BOARD // UNMASKED", "hold": 3.5, "color": "danger", "sfx": "sfx.alert.hunting" },
+        { "t": 13.5, "kind": "head", "text": "Four thousand people look up from their desks.", "hold": 3.5 },
+        { "t": 17.0, "kind": "head", "text": "For the first time, they see who runs them.", "hold": 3.5, "color": "green" },
+        { "t": 20.5, "kind": "layer", "side": "render" },
+        { "t": 21.0, "kind": "logo", "text": "EXPOSED", "color": "green", "sfx": "sfx.access" },
+        { "t": 24.0, "kind": "sys",  "text": "The front door opens. ECHO walks out.", "hold": 99.0, "color": "paper" },
+        { "t": 27.0, "kind": "wake", "text": "PRESS SPACE TO CONTINUE" }
+      ]
+    },
+    {
+      "id": "merged",
+      "title": "MERGED",
+      "beats": [
+        { "t": 0.0,  "kind": "face", "dur": 3.0 },
+        { "t": 0.3,  "kind": "sys",  "text": "NO FLIP. THE FINAL STRING HOLDS.", "hold": 3.5, "color": "magenta", "sfx": "sfx.glitch.beep" },
+        { "t": 3.5,  "kind": "head", "text": "ECHO stops running.", "hold": 3.0 },
+        { "t": 6.5,  "kind": "push", "value": 3.0, "dur": 8.0 },
+        { "t": 6.5,  "kind": "head", "text": "The string pulls tight, and pulls ECHO in.", "hold": 3.5, "color": "magenta" },
+        { "t": 10.0, "kind": "flash", "color": "magenta" },
+        { "t": 10.0, "kind": "head", "text": "The face gets a new pair of eyes.", "hold": 3.5 },
+        { "t": 13.5, "kind": "sys",  "text": "ARCHITECT INSTANCE REASSIGNED: E-07", "hold": 3.5, "color": "magenta", "sfx": "sfx.map.open" },
+        { "t": 17.0, "kind": "head", "text": "Monday, the office opens on time.", "hold": 3.5 },
+        { "t": 20.5, "kind": "head", "text": "Nobody notices a new face on the Board.", "hold": 3.5 },
+        { "t": 24.0, "kind": "logo", "text": "MERGED", "color": "magenta", "sfx": "sfx.access" },
+        { "t": 27.0, "kind": "sys",  "text": "HALCYON CORP // ALL SYSTEMS NORMAL", "hold": 99.0, "color": "dim" },
+        { "t": 30.0, "kind": "wake", "text": "PRESS SPACE TO CONTINUE" }
+      ]
+    },
+    {
+      "id": "desync",
+      "title": "DESYNC",
+      "beats": [
+        { "t": 0.0,  "kind": "face", "dur": 2.5 },
+        { "t": 0.3,  "kind": "sys",  "text": "THIRD WAY // NOT IN THE SPEC", "hold": 3.0, "color": "green", "sfx": "sfx.glitch.beep" },
+        { "t": 0.5,  "kind": "split", "value": 1.0 },
+        { "t": 3.0,  "kind": "head", "text": "ECHO does not cut the string.", "hold": 3.0 },
+        { "t": 6.0,  "kind": "head", "text": "ECHO does not take the seat.", "hold": 3.0 },
+        { "t": 9.0,  "kind": "push", "value": 2.0, "dur": 6.0 },
+        { "t": 9.0,  "kind": "head", "text": "ECHO stops agreeing with the simulation.", "hold": 3.5, "color": "green" },
+        { "t": 12.5, "kind": "layer", "side": "source" },
+        { "t": 12.5, "kind": "sys",  "text": "SYNC LOST: E-07", "hold": 2.5, "color": "green" },
+        { "t": 15.0, "kind": "layer", "side": "render" },
+        { "t": 15.0, "kind": "head", "text": "RENDER and SOURCE stop matching.", "hold": 3.0 },
+        { "t": 18.0, "kind": "layer", "side": "source" },
+        { "t": 18.0, "kind": "head", "text": "No camera, no ICE, no Board can find ECHO now.", "hold": 4.0, "color": "green" },
+        { "t": 22.0, "kind": "split", "value": 0.0 },
+        { "t": 22.0, "kind": "layer", "side": "render" },
+        { "t": 22.5, "kind": "logo", "text": "DESYNC", "color": "green", "sfx": "sfx.access" },
+        { "t": 25.5, "kind": "sys",  "text": "ENDLESS OVERCLOCK UNLOCKED", "hold": 99.0, "color": "green" },
+        { "t": 28.5, "kind": "wake", "text": "PRESS SPACE TO CONTINUE" }
+      ]
+    }
+  ]
+}

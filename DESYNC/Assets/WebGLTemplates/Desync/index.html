@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#000000">
   <title>DESYNC</title>
-  <meta name="description" content="DESYNC: a first-person stealth-hacker where SPACE flips reality. Break the simulation. ~8 min, 6 rooms.">
+  <meta name="description" content="DESYNC: a first-person stealth-hacker where SPACE flips reality. Break the simulation: story mode, BREACH runs with bosses, 6 classic rooms.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="DESYNC">
+  <meta property="og:description" content="A first-person stealth-hacker where SPACE flips reality. Break the simulation: story mode, BREACH runs with bosses, 6 classic rooms.">
   <link rel="icon" type="image/svg+xml" href="TemplateData/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -75,15 +78,45 @@
   </div>
 
   <footer>
-    <div class="keys"><b>WASD</b> move &middot; <b>MOUSE</b> look &middot; <b>SPACE</b> flip reality &middot; <b>E</b> hack terminal &middot; <b>ARROWS</b> enter sequence &middot; <b>R</b> restart &middot; <b>ESC</b> pause</div>
-    <div class="meta">~8 min &middot; 6 rooms &middot; headphones recommended</div>
+    <div class="keys"><b>WASD</b> move &middot; <b>MOUSE</b> look &middot; <b>SPACE</b> flip reality &middot; <b>E</b> hack terminal &middot; <b>ARROWS</b> enter sequence &middot; <b>R</b> restart &middot; <b>TAB</b> run map &middot; <b>ESC</b> pause</div>
+    <div class="meta">story mode &middot; BREACH runs &middot; 6 classic rooms &middot; headphones recommended</div>
   </footer>
+
+  <script>
+    // Analytics: Vercel Web Analytics custom events, cookie-free, nothing personal (docs/ANALYTICS.md). The game calls
+    // window.__desyncTrack(name, json) for every event; Do Not Track turns it all off, including the page-view script. The script exists
+    // only on a Vercel deployment with Web Analytics enabled, so it is not requested on localhost or file: (no 404, no test noise).
+    (function () {
+      var n = navigator;
+      var dnt = n.doNotTrack === "1" || n.doNotTrack === "yes" || window.doNotTrack === "1" || n.msDoNotTrack === "1";
+      var local = /^(localhost|127\.|\[::1\]|0\.0\.0\.0)/.test(location.hostname) || location.protocol === "file:";
+      var seen = window.__desyncEvents = []; // test hook: the last 200 events handed to analytics
+      window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+      window.__desyncTrack = function (name, json) {
+        if (dnt) return;
+        var data;
+        try { data = JSON.parse(json); } catch (e) { return; }
+        seen.push({ name: name, data: data });
+        if (seen.length > 200) seen.shift();
+        try { window.va("event", { name: name, data: data }); } catch (e) { /* analytics must never break the game */ }
+      };
+      if (dnt || local) return;
+      var s = document.createElement("script");
+      s.defer = true;
+      s.src = "/_vercel/insights/script.js";
+      document.head.appendChild(s);
+    })();
+  </script>
 
   <script>
     (function () {
       var $ = function (id) { return document.getElementById(id); };
       var stage = $("stage"), canvas = $("unity-canvas"), loading = $("loading"), focusEl = $("focus"), fsBtn = $("fs");
       var focused = false;
+
+      // Test/diagnostic hook. Pollable from the first byte; the game takes it over once running (Desync.Net, Desync.jslib) and adds
+      // debug.kill/cmd/state. Docs: Assets/Plugins/WebGL/Desync.jslib.
+      window.__DESYNC__ = window.__DESYNC__ || { ready: false, state: "loading", metrics: { lastRestartMs: -1, fps: 0 }, run: { room: -1, seed: 0 } };
 
       // Browsers reject requestPointerLock (e.g. Chrome within ~1 s of Esc). Unity's loader treats any unhandled rejection
       // as a fatal error dialog; registered first, this listener swallows only pointer-lock rejections. The game already
@@ -93,6 +126,7 @@
       });
 
       function fail(msg) {
+        window.__DESYNC__.state = "error";
         $("pct").textContent = "FAILED TO LOAD";
         $("msg").textContent = String(msg);
         $("bar").style.display = "none";

@@ -16,8 +16,9 @@ namespace Desync.Levels.Editor
 {
     /// Generates every scene from RoomLayouts (idempotent):
     ///   tools/unity.sh exec levels Desync.Levels.Editor.LevelBuilder.BuildAll
-    /// Boot (empty), Title (office vignette + camera), Room_01..06 (geometry, RoomInfo, player, enemies, NavMesh),
-    /// Ending (Architect head + billboards), then EditorBuildSettings in that order.
+    /// Boot (empty), Title (office vignette + camera), Breach (fog + light only: RoomBuilder builds generated rooms into it
+    /// at runtime), Room_01..06 (geometry, RoomInfo, player, enemies, NavMesh), Ending (Architect head + billboards),
+    /// then EditorBuildSettings in that order.
     public static class LevelBuilder
     {
         public const string SceneDir = "Assets/Scenes";
@@ -28,6 +29,8 @@ namespace Desync.Levels.Editor
         {
             AssetDatabase.Refresh();
             ModelLib.RegisterModels();
+            GuardModel.Build();
+            RoomGeo.SourceColors = ModelLib.SourceColors;
             var scenes = new List<string>();
             int failed = 0;
             void Run(string name, Action<string> build)
@@ -38,6 +41,7 @@ namespace Desync.Levels.Editor
             }
             Run(SceneFlow.Boot, BuildBoot);
             Run(SceneFlow.Title, p => BuildBackdrop(p, RoomLayouts.Title, true));
+            Run(RoomBuilder.BreachScene, BuildBreach);
             foreach (var room in RoomLayouts.Rooms) Run(SceneFlow.Room(room.index), p => BuildRoom(p, room));
             Run(SceneFlow.Ending, p => BuildBackdrop(p, RoomLayouts.Ending, false));
 
@@ -71,6 +75,14 @@ namespace Desync.Levels.Editor
             Environment();
             var cam = MainCamera(new Vector3(0, 1, -10), Vector3.zero);
             cam.backgroundColor = Color.black;
+            Save(scene, path);
+        }
+
+        /// Breach: the room environment (fog, ambient, sun) and nothing else; RunManager builds each generated room into it.
+        static void BuildBreach(string path)
+        {
+            var scene = NewScene(path);
+            Environment();
             Save(scene, path);
         }
 
@@ -154,6 +166,12 @@ namespace Desync.Levels.Editor
                 var p = geo.Center(c, r) + Vector3.up * (geo.LevelY(c, r) + cam.height);
                 Safe("Camera", () => EnemyFactory.Camera(enemies, p, cam.yaw, cam.pitch, cam.phase));
             }
+            foreach (var gd in d.guards)
+            {
+                var pts = new Vector3[gd.path.Length];
+                for (int i = 0; i < pts.Length; i++) pts[i] = geo.Center(gd.path[i].c, gd.path[i].r) + Vector3.up * geo.LevelY(gd.path[i].c, gd.path[i].r);
+                Safe("Guard", () => EnemyFactory.Guard(enemies, pts, gd.phase));
+            }
             int story = d.storyStart;
             for (int r = 0; r < d.Rows; r++)
             for (int c = 0; c < d.Cols; c++)
@@ -193,18 +211,48 @@ namespace Desync.Levels.Editor
             }
 
             int navTris = BakeNavMesh(path);
-            var v = GridValidator.Validate(d, new GridValidator.Rates
+            var rates = new GridValidator.Rates
             {
                 move = cfg.moveSpeed, rise = cfg.meltRiseSource, drain = cfg.meltDrainRender, spike = cfg.meltFlipSpike, hack = 3f,
-            });
+            };
+            var v = GridValidator.Validate(d, rates);
             int tris = Tris(scene);
             string budget = tris <= 30000 ? "OK" : "OVER BUDGET";
             Debug.Log($"[DESYNC] LEVELS R{d.index + 1} {d.name}: tris {tris} ({budget}; geometry {geo.TriCount}) navmesh tris {navTris} | validator {v}\n" + v.route);
             if (!v.ok) Debug.LogError($"[DESYNC] LEVELS R{d.index + 1} {d.name} is NOT beatable within the melt budget");
+            if (d.guards.Length > 0)
+            {
+                // Officers are RENDER-only: wall their patrol cells off (crossable only in SOURCE) and the room must still be beatable.
+                var gv = GridValidator.Validate(WallOffPatrols(d), rates);
+                Debug.Log($"[DESYNC] LEVELS R{d.index + 1} {d.name}: {d.guards.Length} officer(s), routes fair (Lint) | with the patrols walled off {gv}\n" + gv.route);
+                if (!gv.ok) Debug.LogError($"[DESYNC] LEVELS R{d.index + 1} {d.name} is NOT beatable with its officers' patrols in the way");
+            }
             Save(scene, path);
         }
 
         // ------------------------------------------------------------------------------------------------ helpers
+
+        /// The room with every open cell an officer's loop crosses turned into wall, so the validator may cross it in SOURCE only.
+        static RoomDef WallOffPatrols(RoomDef d)
+        {
+            var rows = new char[d.Rows][];
+            for (int r = 0; r < d.Rows; r++) rows[r] = d.grid[r].ToCharArray();
+            foreach (var gd in d.guards)
+                for (int i = 0; i < gd.path.Length; i++)
+                {
+                    var a = gd.path[i]; var b = gd.path[(i + 1) % gd.path.Length];
+                    int n = Math.Max(Math.Abs(b.c - a.c), Math.Abs(b.r - a.r)) * 4;
+                    for (int s = 0; s <= n; s++)
+                    {
+                        int c = (int)Math.Round(a.c + (b.c - a.c) * (n > 0 ? (float)s / n : 0f)), r = (int)Math.Round(a.r + (b.r - a.r) * (n > 0 ? (float)s / n : 0f));
+                        char ch = rows[r][c];
+                        if (ch == Legend.Floor || ch == Legend.Poster || ch == Legend.Glitch || ch == Legend.Vent) rows[r][c] = Legend.Wall;
+                    }
+                }
+            var g = new string[d.Rows];
+            for (int r = 0; r < d.Rows; r++) g[r] = new string(rows[r]);
+            return new RoomDef { index = d.index, name = d.name, grid = g, levels = d.levels, cams = d.cams, traceCountdown = d.traceCountdown };
+        }
 
         static GameObject Safe(string what, Func<GameObject> make)
         {
@@ -212,7 +260,7 @@ namespace Desync.Levels.Editor
             catch (Exception e) { Debug.LogError($"[DESYNC] LEVELS: factory {what} threw (owner: that factory's workstream): {e}"); return null; }
         }
 
-        static void Environment()
+        internal static void Environment()
         {
             var cfg = GameConfig.I;
             RenderSettings.fog = true;

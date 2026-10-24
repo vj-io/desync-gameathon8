@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # tools/deploy.sh [--prod]
-# Copies Builds/WebRelease into web/site (which holds vercel.json + the .vercel link), deploys it to Vercel project "desync"
+# Copies Builds/WebRelease and web/api into web/site (which holds vercel.json + the .vercel link), deploys it to Vercel project "desync"
 # (preview by default, production only with --prod), prints the URL, then curls index.html + every build file and checks
-# status 200 and Content-Encoding. Previews sit behind Vercel login: the check goes through `vercel curl` (auto protection bypass).
+# status 200 and, for the Brotli-compressed Build/*.unityweb files, Content-Encoding: br. Previews sit behind Vercel login: the
+# check goes through `vercel curl` (auto protection bypass).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/Builds/WebRelease"; SITE="$ROOT/web/site"
@@ -10,7 +11,8 @@ SRC="$ROOT/Builds/WebRelease"; SITE="$ROOT/web/site"
 
 echo "[deploy] vercel account: $(vercel whoami 2>/dev/null | tail -1)"
 mkdir -p "$SITE"
-rsync -a --delete --exclude .vercel --exclude vercel.json "$SRC"/ "$SITE"/
+rsync -a --delete --exclude .vercel --exclude vercel.json --exclude /api "$SRC"/ "$SITE"/
+rsync -a --delete --exclude _test "$ROOT/web/api"/ "$SITE/api"/   # the leaderboard function (web/api/leaderboard.ts), tests left out
 cd "$SITE"
 [ -f .vercel/project.json ] || { vercel link --yes --project desync >/dev/null 2>&1; rm -f .env.local; }
 
@@ -28,5 +30,10 @@ for f in index.html $(cd "$SRC" && find Build TemplateData -type f 2>/dev/null |
         -w "%{http_code} enc=%header{content-encoding} type=%{content_type} cache=%header{cache-control} bytes=%{size_download}" 2>/dev/null | tail -1)
   printf '  %-58s %s\n' "$f" "$r"
   case $r in 200*) ;; *) bad=1 ;; esac
+  case $f in *.unityweb) case $r in *" enc=br "*) ;; *) echo "    ^ expected Content-Encoding: br" >&2; bad=1 ;; esac ;; esac
 done
+# The leaderboard answers 200, or 503 while no Redis store is connected; anything else means the function did not deploy.
+r=$(vercel curl "/api/leaderboard?board=$(date -u +%F)" --deployment "$url" -- -s -o /dev/null -w "%{http_code}" 2>/dev/null | tail -1)
+printf '  %-58s %s\n' "api/leaderboard" "$r"
+case $r in 200|503) ;; *) bad=1 ;; esac
 [ "$bad" -eq 0 ] && echo "[deploy] OK: $url" || { echo "[deploy] FAILED checks: $url" >&2; exit 1; }

@@ -14,17 +14,19 @@ namespace Desync.Art
             TraceId = Shader.PropertyToID("_Trace"), RebootId = Shader.PropertyToID("_Reboot"), WipeId = Shader.PropertyToID("_Wipe"),
             DripId = Shader.PropertyToID("_Drip"), FlashId = Shader.PropertyToID("_FlashScale"), FlipWaveId = Shader.PropertyToID("_FlipWave"),
             SrcBlendId = Shader.PropertyToID("_SrcBlend"), DstBlendId = Shader.PropertyToID("_DstBlend"),
-            ZWriteId = Shader.PropertyToID("_ZWrite"), CullId = Shader.PropertyToID("_Cull");
+            ZWriteId = Shader.PropertyToID("_ZWrite"), CullId = Shader.PropertyToID("_Cull"),
+            DesatId = Shader.PropertyToID("_Desat"), FocusId = Shader.PropertyToID("_DesatFocus"), FxReduceId = Shader.PropertyToID("_FxReduce");
 
         /// Shared materials that turn additive / see-through in SOURCE.
         public static readonly string[] SourceTransparentKeys = { "mat.world", "mat.floor", "mat.poster", "mat.screen" };
         public static readonly Color SourceFog = new Color(0.0f, 0.02f, 0.012f);
 
-        const float WipeTime = 0.3f;
+        const float WipeTime = 0.3f, RecapDesat = 0.6f, DesatRamp = 0.12f, FocusRadius = 0.09f;
 
         Material[] _mats;
         Camera _rainCam;
-        bool _calm;
+        bool _calm, _reduceFx;
+        float _desat, _desatTarget; bool _focusOn; Vector3 _focusPos;
         float _reboot, _rebootHold, _wipe = -1f, _drip, _wave = 99f;
         bool _rebootClosing;
         Vector3 _waveOrigin;
@@ -54,6 +56,7 @@ namespace Desync.Art
             GameEvents.Rebooting += OnRebooting;
             GameEvents.RoomReset += OnRoomReset;
             GameEvents.SettingsChanged += OnSettings;
+            GameEvents.DeathRecap += OnDeathRecap;
             SceneManager.sceneLoaded += OnScene;
             OnSettings();
             OnLayer(LayerState.InSource);
@@ -67,6 +70,7 @@ namespace Desync.Art
             GameEvents.Rebooting -= OnRebooting;
             GameEvents.RoomReset -= OnRoomReset;
             GameEvents.SettingsChanged -= OnSettings;
+            GameEvents.DeathRecap -= OnDeathRecap;
             SceneManager.sceneLoaded -= OnScene;
             // Material assets edited in play mode stay edited in the editor: always leave them in RENDER state.
             SetWorldBlend(_mats, false);
@@ -74,12 +78,23 @@ namespace Desync.Art
 
         void OnDestroy() { if (_i == this) _i = null; }
 
-        void OnSettings() => _calm = Settings.ReduceFlashes;
-        void OnScene(Scene s, LoadSceneMode m) => OnLayer(LayerState.InSource);
-        void OnRoomReset() => _rebootHold = 0f;
+        void OnSettings() { _reduceFx = Settings.ReduceFx; _calm = Settings.ReduceFlashes || _reduceFx; Palette.Refresh(); }
+        void OnScene(Scene s, LoadSceneMode m) { ClearRecap(); OnLayer(LayerState.InSource); }
+        void OnRoomReset() { _rebootHold = 0f; ClearRecap(); }
+
+        /// Death recap: desaturate 60 %, keeping a small colour spot on the killer while it is on screen.
+        void OnDeathRecap(DeathInfo d)
+        {
+            _desatTarget = RecapDesat;
+            _focusOn = !string.IsNullOrEmpty(d.killerId);
+            _focusPos = d.killerPos;
+        }
+
+        void ClearRecap() { _desat = _desatTarget = 0f; _focusOn = false; }
 
         void OnRebooting()
         {
+            _desatTarget = 0f;
             _rebootClosing = true;
             _rebootHold = Mathf.Max(GameConfig.I.restartWipe, 0.02f);   // stay closed until RoomReset, at most one more wipe length
         }
@@ -123,14 +138,26 @@ namespace Desync.Art
         {
             var cfg = GameConfig.I;
             float dt = Time.unscaledDeltaTime, now = Time.unscaledTime;
-            float flash = _calm ? 0.25f : 1f;
+            float flash = _reduceFx ? 0f : _calm ? 0.25f : 1f;   // REDUCE FX: flashes off; REDUCE FLASHES: a quarter
 
             float pulse = GameState.Pulse;
             if (GameState.GlitchCountdown >= 0f) pulse = Mathf.Max(pulse, 0.3f);
-            Shader.SetGlobalFloat(PulseId, pulse * flash);
+            Shader.SetGlobalFloat(PulseId, _reduceFx ? pulse : pulse * flash);   // REDUCE FX scales the pulse x0.3 in the shader (chromatic + slices)
             Shader.SetGlobalFloat(MeltId, Mathf.Clamp01(GameState.Melt / 100f));
             Shader.SetGlobalFloat(TraceId, GameState.TraceActive ? (_calm ? 0.6f : 0.6f + 0.4f * Mathf.Sin(now * 12f)) : 0f);
             Shader.SetGlobalFloat(FlashId, flash);
+            Shader.SetGlobalFloat(FxReduceId, _reduceFx ? 1f : 0f);   // chromatic x0.3 in the shader
+
+            _desat = Mathf.MoveTowards(_desat, _desatTarget, dt * RecapDesat / DesatRamp);
+            Shader.SetGlobalFloat(DesatId, _desat);
+            var focus = Vector4.zero;
+            var fcam = PlayerRef.Cam ? PlayerRef.Cam : Camera.main;
+            if (_focusOn && _desat > 0f && fcam)
+            {
+                var vp = fcam.WorldToViewportPoint(_focusPos);
+                if (vp.z > 0f) focus = new Vector4(vp.x, vp.y, FocusRadius, 1f);
+            }
+            Shader.SetGlobalVector(FocusId, focus);
 
             // REBOOT: close over restartWipe (RoomManager resets at the end of it), hold until RoomReset, open over restartWipe.
             float step = dt / Mathf.Max(cfg.restartWipe, 0.02f);

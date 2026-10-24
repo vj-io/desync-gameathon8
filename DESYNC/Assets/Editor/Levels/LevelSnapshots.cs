@@ -50,6 +50,44 @@ namespace Desync.Levels.Editor
             Debug.Log("[DESYNC] LEVELS snapshots written to " + Out);
         }
 
+        /// Generated rooms (RoomBuilder, one per act from the shipped chunks): top-down and first-person RENDER/SOURCE.
+        ///   tools/unity.sh exec levels Desync.Levels.Editor.LevelSnapshots.Generated
+        public static void Generated()
+        {
+            Directory.CreateDirectory(Out);
+            var lib = Desync.Gen.ChunkLibrary.FromFolder(Path.Combine(Application.dataPath, "Resources/Content/chunks"));
+            for (int act = 1; act <= 3; act++)
+            {
+                Desync.Gen.RoomSpec spec = null;
+                for (uint seed = 1000u * (uint)act + 3; spec?.tiles == null; seed++) spec = Desync.Gen.Generator.GenerateRoom(seed, act, 3, 0, lib);
+                EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                LevelBuilder.Environment();
+                var h = RoomBuilder.BuildNow(spec, null);
+                string name = $"gen_a{act}_{spec.seed}";
+                var propCols = h.transform.Find("Geometry/PropColliders");
+                Debug.Log($"[DESYNC] LEVELS snapshot {name}: tris {h.Tris}, draw calls <= {h.DrawCalls}, {spec.entities.Count} entities, " +
+                          $"{(propCols ? propCols.GetComponents<BoxCollider>().Length : 0)} props, {h.transform.Find("Geometry/Posters").childCount - 1} posters");
+                float w = spec.tiles[0].Length * RoomBuilder.Tile, l = spec.tiles.Length * RoomBuilder.Tile;
+                var ceiling = h.transform.Find("Geometry/Ceiling");
+                if (ceiling) ceiling.gameObject.SetActive(false);
+                bool fog = RenderSettings.fog; RenderSettings.fog = false;
+                Shoot($"{name}_top", new Vector3(w * 0.5f, 60f, -l * 0.5f), Quaternion.Euler(90f, 0f, 0f), 40f, Mathf.Max(l, w * 9f / 16f) * 0.5f + 1f, 1600, 900);
+                var mid = new Vector3(w * 0.5f, 0f, -l * 0.5f);   // walls have no top caps (the ceiling hides them): look at them obliquely
+                var from = mid + new Vector3(0f, Mathf.Max(w, l) * 0.75f, -Mathf.Max(w, l) * 0.6f);
+                Shoot($"{name}_oblique", from, Quaternion.LookRotation(mid - from), 60f, 0f, 1600, 900);
+                RenderSettings.fog = fog;
+                if (ceiling) ceiling.gameObject.SetActive(true);
+                var spawn = h.Info.spawn;
+                Vector3 eye = spawn.position + Vector3.up * 1.6f;
+                Shoot($"{name}_fp", eye, spawn.rotation, 75f, 0f, 1280, 720);
+                Shader.EnableKeyword("_SOURCE"); Shader.SetGlobalFloat("_Layer", 1f);
+                Shoot($"{name}_fp_source", eye, spawn.rotation, 75f, 0f, 1280, 720);
+                Shader.DisableKeyword("_SOURCE"); Shader.SetGlobalFloat("_Layer", 0f);
+            }
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            Debug.Log("[DESYNC] LEVELS generated-room snapshots written to " + Out);
+        }
+
         /// Each model.* prefab alone, seen from its front (+Z side, raised 3/4 view) and from its right (+X side).
         static void Models()
         {

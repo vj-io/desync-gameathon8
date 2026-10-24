@@ -1,0 +1,37 @@
+{
+  "ice": [
+    "Vents only count the time you spend in SOURCE: one hunter every 4 seconds there, and every 2 seconds during a TRACE.",
+    "Hunters freeze and go harmless in RENDER, then vanish about a second after you flip back.",
+    "Hunters run along the floor, so walls give you no cover in SOURCE. One touch is a fail."
+  ],
+  "melt": [
+    "SOURCE adds 12 % melt a second. RENDER takes 4 % off. Every flip adds 5 % on top.",
+    "The meter warns at 70 %. At 100 % you have about 0.6 seconds before the reboot.",
+    "A flip back to RENDER is refused if you would land inside a wall, so check where you will come out before you flip."
+  ],
+  "trace": [
+    "A camera or drone cone that holds you for half a second starts a TRACE. A TRACE lasts 6 seconds.",
+    "Three TRACEs in one room set off the alarm and restart it. Cameras are blind in SOURCE, so flip to break their view.",
+    "UNSTABLE runs a 90-second countdown. Reach the exit before it runs out."
+  ],
+  "glitch": [
+    "Standing in a glitch zone starts a 3-second countdown. When it reaches zero, the game flips you.",
+    "A forced flip still follows the flip rule: it is refused if it would leave you inside a wall.",
+    "Leaving the zone resets the countdown."
+  ],
+  "drone": [
+    "Guard drones are solid in RENDER and kill on touch. In SOURCE they are hidden and harmless, but they keep flying.",
+    "A hijack pad takes control of its drone for 10 seconds. A hijacked drone never detects you.",
+    "A hijacked drone blinds any camera cone it overlaps and blocks ICE hunters."
+  ],
+  "architect": [
+    "The Architect's gaze turns a full circle every 14 seconds and sees both layers. Flipping does not hide you from it.",
+    "Move while the gaze cone points away from you. Timing matters more than cover here.",
+    "Each shield terminal sits in a closed pod. Phase into the pod in SOURCE, flip back, then hack."
+  ],
+  "guard": [
+    "Security officers only exist in RENDER. Flip to SOURCE and they freeze, then lose you.",
+    "An officer winds up for about a third of a second before he swings. Step back or flip.",
+    "Walls stop officers in RENDER. Break line of sight and they search, then return to their post."
+  ]
+}

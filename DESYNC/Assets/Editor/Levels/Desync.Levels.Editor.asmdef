@@ -4,6 +4,7 @@
   "references": [
     "Desync.Core",
     "Desync.Levels",
+    "Desync.Gen",
     "Desync.Player",
     "Desync.Enemies",
     "Desync.Art",

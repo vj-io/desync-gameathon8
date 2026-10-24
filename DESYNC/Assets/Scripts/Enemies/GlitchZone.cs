@@ -2,13 +2,21 @@ using UnityEngine;
 
 namespace Desync.Enemies
 {
-    /// Room 5 glitch floor: while the player stands inside (horizontal radius), a ring shrinks over glitchZoneTime
-    /// (GameState.GlitchCountdown). At zero it raises GlitchForcedFlip (FlipController applies it with its normal rejection
-    /// rule) and restarts. GlitchZone(true/false) on enter/leave. Works in both layers.
+    /// Glitch floor: while the player stands inside (horizontal radius), a ring shrinks over `delay` s (GameConfig.glitchZoneTime
+    /// when unset: Room 5). At zero it raises GlitchForcedFlip (FlipController applies it with its normal rejection rule) and
+    /// restarts. GameState.GlitchCountdown (screen tear, beeps, HUD) is published the whole time, or with `telegraph` > 0
+    /// only for the last `telegraph` s (generated rooms: 1.0 s delay, 0.5 s tear). GlitchZone(true/false) on enter/leave.
+    /// Works in both layers.
     public class GlitchZone : MonoBehaviour, IResettable
     {
         public float radius = 2f;
         public Transform countdownRing;
+        public float delay = -1f;   // seconds inside before the forced flip; <= 0 = GameConfig.glitchZoneTime
+        public float telegraph;     // > 0: GlitchCountdown only during the last `telegraph` seconds
+
+        float Total => delay > 0f ? delay : Mathf.Max(0.1f, GameConfig.I.glitchZoneTime);
+        /// Static Veil widens the telegraph by 0.5 s (only where there is one; Room 5 already shows the full countdown).
+        float Tel => telegraph > 0f && ExploitFlags.StaticVeil ? telegraph + ExploitFlags.StaticVeilWarn : telegraph;
 
         float _remaining, _last;
         bool _inside;
@@ -16,13 +24,13 @@ namespace Desync.Enemies
         void Update()
         {
             float dt = EnemyKit.Step(ref _last);
-            float total = Mathf.Max(0.1f, GameConfig.I.glitchZoneTime);
+            float total = Total;
             bool inside = PlayerRef.Exists && GameState.Alive && !GameState.Cinematic && Contains(PlayerRef.Position);
             if (inside != _inside)
             {
                 _inside = inside;
                 _remaining = total;
-                GameState.GlitchCountdown = inside ? total : -1f;
+                GameState.GlitchCountdown = inside && Tel <= 0f ? total : -1f;
                 GameEvents.GlitchZone?.Invoke(inside);
             }
             if (inside)
@@ -31,9 +39,11 @@ namespace Desync.Enemies
                 if (_remaining <= 0f)
                 {
                     _remaining = total;
+                    PlayerRef.LastKillerPos = transform.position;   // MeltMeter names "GLITCH" if this flip melts the player
                     GameEvents.GlitchForcedFlip?.Invoke();
                 }
-                GameState.GlitchCountdown = _remaining;
+                float tel = Tel;
+                GameState.GlitchCountdown = tel <= 0f || _remaining <= tel ? _remaining : -1f;
             }
             float f = inside ? _remaining / total : 1f + 0.04f * Mathf.Sin(Time.time * 5f);
             if (countdownRing) countdownRing.localScale = new Vector3(f, 1f, f);
@@ -51,7 +61,7 @@ namespace Desync.Enemies
         {
             if (_inside) GameState.GlitchCountdown = -1f;
             _inside = false;
-            _remaining = GameConfig.I.glitchZoneTime;
+            _remaining = Total;
             _last = 0f;
             if (countdownRing) countdownRing.localScale = Vector3.one;
         }

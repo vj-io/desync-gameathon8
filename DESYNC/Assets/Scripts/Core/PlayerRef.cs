@@ -13,6 +13,9 @@ namespace Desync
         public static bool Exists => Root;
         public static Vector3 Position => Root ? Root.position : Vector3.zero;
 
+        public static string LastKillerId;   // set by the killer right before Kill (e.g. "ICE-2", "DRONE-1"); null for melt/alarm
+        public static Vector3 LastKillerPos;
+
         public static void Kill(DeathCause cause)
         {
             if (!GameState.Alive || GameState.Cinematic) return;

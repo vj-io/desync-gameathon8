@@ -5,6 +5,11 @@
 // Include after URP Core.hlsl.
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
 
+// Colour-blind palette: Desync.Art.Palette writes these globals (linear colours) when the setting changes. _Colorblind = 0 keeps
+// every shader on its authored colours. Pattern cues (hatch on solid walls, stripes on threat bodies) read in both modes.
+float _Colorblind;
+float4 _CbRenderLow, _CbRenderHigh, _CbSource, _CbDanger;
+
 // "Hash without Sine" by Dave Hoskins (MIT), https://www.shadertoy.com/view/4djSRW
 float Hash11(float p)
 {
@@ -66,6 +71,13 @@ float EdgeHalo(float px, float haloPx)
 float FogVisibility(float fogFactor)
 {
     return MixFogColor(float3(1.0, 1.0, 1.0), float3(0.0, 0.0, 0.0), fogFactor).x;
+}
+
+// Anti-aliased 50 % stripes along c (c counts stripe periods). Far away the stripes average out to a flat 50 %.
+float Stripes(float c)
+{
+    float w = fwidth(c);
+    return 1.0 - smoothstep(0.5 - w, 0.5 + w, abs(frac(c) - 0.5) * 2.0);
 }
 
 // Glyph atlas: 8x8 cells, id 0..63, single channel (R). cellUV is in glyph cells (1 unit = 1 glyph).

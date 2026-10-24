@@ -1,10 +1,29 @@
 {
   "name": "Desync.UI.Tests",
   "rootNamespace": "Desync.UI.Tests",
-  "references": ["Desync.Core","Desync.UI","Unity.TextMeshPro","Unity.InputSystem","UnityEngine.UI","UnityEngine.TestRunner"],
+  "references": [
+    "Desync.Core",
+    "Desync.Art",
+    "Desync.Rules",
+    "Desync.Net",
+    "Desync.UI",
+    "Unity.TextMeshPro",
+    "Unity.InputSystem",
+    "UnityEngine.UI",
+    "UnityEngine.TestRunner",
+    "Desync.Flow",
+    "Desync.Content",
+    "Desync.Gen",
+    "Desync.Enemies",
+    "Desync.TestKit"
+  ],
   "includePlatforms": [],
   "overrideReferences": true,
-  "precompiledReferences": ["nunit.framework.dll"],
-  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
   "autoReferenced": false
 }

@@ -1,6 +1,6 @@
 {
   "name": "Desync.Levels",
   "rootNamespace": "Desync.Levels",
-  "references": ["Desync.Core"],
+  "references": ["Desync.Core", "Desync.Rules", "Desync.Gen", "Desync.Enemies", "Desync.Player", "Desync.Art", "Unity.AI.Navigation", "Unity.TextMeshPro"],
   "autoReferenced": true
 }

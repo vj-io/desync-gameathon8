@@ -1,4 +1,5 @@
 using System.Collections;
+using Desync.TestKit;
 using NUnit.Framework;
 using Unity.AI.Navigation;
 using UnityEngine;
@@ -331,50 +332,54 @@ namespace Desync.Enemies.Tests
             Assert.IsFalse(GameState.Cinematic);
         }
 
+        static object _sink;
+
         /// Zero managed allocations per frame from the enemy systems (other workstreams' behaviours disabled).
         [UnityTest]
         public IEnumerator EnemySystemsDoNotAllocatePerFrame()
         {
+            var disabled = new System.Collections.Generic.List<MonoBehaviour>();
             foreach (var mb in Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude))
             {
                 string ns = mb.GetType().Namespace ?? "";
-                if (ns.StartsWith("Desync") && !ns.StartsWith("Desync.Enemies")) mb.enabled = false;
+                if (ns.StartsWith("Desync") && !ns.StartsWith("Desync.Enemies") && mb.enabled) { mb.enabled = false; disabled.Add(mb); }
             }
-            var surf = _world.AddComponent<NavMeshSurface>();
-            surf.layerMask = 1 << GameLayers.Floor;
-            surf.collectObjects = CollectObjects.Children;
-            surf.BuildNavMesh();
-            var enemies = new GameObject("Enemies").transform;
-            enemies.SetParent(_world.transform);
-            EnemyFactory.Camera(enemies, new Vector3(0f, 2.5f, -3f), 180f, 20f, 0f);
-            EnemyFactory.Drone(enemies, new[] { new Vector3(-6f, 0f, 8f), new Vector3(6f, 0f, 8f) }, 0f);
-            EnemyFactory.IceVent(enemies, new Vector3(12f, 0f, 12f));
-            var term = EnemyFactory.Terminal(enemies, new Vector3(0f, 0f, 1.5f), 180f, 4, 6).GetComponent<Terminal>();
-            EnemyFactory.GlitchZone(enemies, new Vector3(-10f, 0f, -10f), 2f);
-            EnemyFactory.ExitPortal(enemies, new Vector3(0f, 0f, -12f), 0f);
-            EnemyFactory.Architect(enemies, new Vector3(0f, 0f, 20f));
-            EnemyFactory.Billboard(enemies, new Vector3(5f, 2f, 20f), 270f, new Vector2(3f, 1.5f));
-            _player.transform.position = Vector3.zero;
-
-            // warm up: TRACE, an ICE out and chasing, a hack in progress with the scrambled SOURCE screen
-            yield return Run(0.5f);
-            LayerState.Set(true);
-            term.Interact();
-            yield return Run(GameConfig.I.iceSpawnInterval + 0.3f, () => _spawned > 0);
-            Assert.AreEqual(1, _spawned);
-            yield return Run(0.3f);
-
-            long worst = 0;
-            for (int f = 0; f < 90; f++)
+            try
             {
-                long before = System.GC.GetAllocatedBytesForCurrentThread();
-                RoomClock.Time += Time.deltaTime;
-                yield return null;
-                long d = System.GC.GetAllocatedBytesForCurrentThread() - before;
-                if (d > worst) worst = d;
+                var surf = _world.AddComponent<NavMeshSurface>();
+                surf.layerMask = 1 << GameLayers.Floor;
+                surf.collectObjects = CollectObjects.Children;
+                surf.BuildNavMesh();
+                var enemies = new GameObject("Enemies").transform;
+                enemies.SetParent(_world.transform);
+                EnemyFactory.Camera(enemies, new Vector3(0f, 2.5f, -3f), 180f, 20f, 0f);
+                EnemyFactory.Drone(enemies, new[] { new Vector3(-6f, 0f, 8f), new Vector3(6f, 0f, 8f) }, 0f);
+                EnemyFactory.IceVent(enemies, new Vector3(12f, 0f, 12f));
+                var term = EnemyFactory.Terminal(enemies, new Vector3(0f, 0f, 1.5f), 180f, 4, 6).GetComponent<Terminal>();
+                EnemyFactory.GlitchZone(enemies, new Vector3(-10f, 0f, -10f), 2f);
+                EnemyFactory.ExitPortal(enemies, new Vector3(0f, 0f, -12f), 0f);
+                EnemyFactory.Architect(enemies, new Vector3(0f, 0f, 20f));
+                EnemyFactory.Billboard(enemies, new Vector3(5f, 2f, 20f), 270f, new Vector2(3f, 1.5f));
+                _player.transform.position = Vector3.zero;
+
+                // warm up: TRACE, an ICE out and chasing, a hack in progress with the scrambled SOURCE screen
+                yield return Run(0.5f);
+                LayerState.Set(true);
+                term.Interact();
+                yield return Run(GameConfig.I.iceSpawnInterval + 0.3f, () => _spawned > 0);
+                Assert.AreEqual(1, _spawned);
+                yield return Run(0.3f);
+
+                // 90 frames of every enemy's Update + LateUpdate, counted exactly (Allocs: a real frame also carries the runner's own)
+                var frame = Allocs.Frame("Desync.Enemies");
+                for (int f = 0; f < 5; f++) { RoomClock.Time += Time.deltaTime; frame.Run(); }   // the bound calls' first run
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                int extra = 0;
+                for (int f = 0; f < 90; f++) { RoomClock.Time += Time.deltaTime; extra += frame.Count(); }
+                Debug.Log($"[DESYNC] enemies: allocations in 90 frames = {extra}");
+                Assert.AreEqual(0, extra, "managed allocations in enemy frames: " + frame.Offenders);
             }
-            Debug.Log($"[DESYNC] enemies GC per frame, worst = {worst} B");
-            Assert.AreEqual(0, worst, "managed bytes allocated in one frame");
+            finally { foreach (var mb in disabled) if (mb) mb.enabled = true; }
         }
 
         [UnityTest]

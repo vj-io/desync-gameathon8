@@ -29,8 +29,11 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _CbHue: 0
     - _FadeRange: 0
     - _Intensity: 0.32
+    - _Threat: 0
+    - _ZTest: 4
     m_Colors:
     - _Anim: {r: 0, g: 0, b: 0, a: 0}
     - _Band: {r: 5, g: 4, b: 0.18, a: 0}

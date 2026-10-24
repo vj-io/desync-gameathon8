@@ -1,0 +1,10 @@
+{
+  "name": "Desync.Levels.PlayTests",
+  "rootNamespace": "Desync.Levels.Tests",
+  "references": ["Desync.Core", "Desync.Rules", "Desync.Gen", "Desync.Levels", "Desync.Enemies", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "includePlatforms": [],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

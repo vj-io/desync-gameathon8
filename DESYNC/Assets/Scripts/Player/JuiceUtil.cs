@@ -45,17 +45,21 @@ namespace Desync.Player
 
         void Shake(float strength)
         {
-            if (!Settings.Shake) return;
+            if (!Settings.Shake || Settings.ReduceFx) return;   // Reduce FX = shake x0
             float d = GameConfig.I.shakeDuration;
             float current = shakeLeft > 0f ? shakeAmp * shakeLeft / d : 0f;
             shakeAmp = Mathf.Max(current, Mathf.Clamp01(strength) * MaxShake);
             shakeLeft = d;
         }
 
-        /// Freezes time for `seconds` unscaled; overlapping requests extend to the latest end. Ignored while paused.
+        /// Paused and the death recap own Time.timeScale (both hold it at 0).
+        static bool ClockHeld => GameState.Paused || GameState.Phase == GameState.PhaseKind.Recap;
+
+        /// Freezes time for `seconds` unscaled; overlapping requests extend to the latest end. Starts only from normal time
+        /// (not paused, recap, slow-mo), so ending it at 1x always restores the scale it found.
         void HitStop(float seconds)
         {
-            if (GameState.Paused || seconds <= 0f) return;
+            if (ClockHeld || seconds <= 0f || (!hitStopping && Time.timeScale != 1f)) return;
             hitStopEnd = Mathf.Max(hitStopEnd, Time.unscaledTime + seconds);
             hitStopping = true;
             Time.timeScale = 0f;
@@ -65,7 +69,7 @@ namespace Desync.Player
         {
             if (!hitStopping) return;
             hitStopping = false;
-            if (!GameState.Paused) Time.timeScale = 1f;
+            if (!ClockHeld) Time.timeScale = 1f;
         }
 
         void Update()

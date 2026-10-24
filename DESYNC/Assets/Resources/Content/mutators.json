@@ -1,0 +1,35 @@
+{
+  "mutators": [
+    {"id":"hardened_ice","name":"Hardened ICE","desc":"ICE speed +10/20/30 %.","ranks":[1,2,3],"effects":[[{"stat":"IceSpeedMult","op":"add","value":0.1}],[{"stat":"IceSpeedMult","op":"add","value":0.2}],[{"stat":"IceSpeedMult","op":"add","value":0.3}]]},
+    {"id":"wider_lens","name":"Wider Lens","desc":"Camera range +15/30 %.","ranks":[1,2],"effects":[[{"stat":"CameraRangeMult","op":"add","value":0.15}],[{"stat":"CameraRangeMult","op":"add","value":0.3}]]},
+    {"id":"hair_trigger","name":"Hair Trigger","desc":"TRACE window 0.4/0.3 s.","ranks":[1,2],"effects":[[{"stat":"TraceWindow","op":"add","value":-0.1}],[{"stat":"TraceWindow","op":"add","value":-0.2}]]},
+    {"id":"hot_silicon","name":"Hot Silicon","desc":"SOURCE melt +1/2/3 %/s.","ranks":[1,2,3],"effects":[[{"stat":"SourceRise","op":"add","value":1}],[{"stat":"SourceRise","op":"add","value":2}],[{"stat":"SourceRise","op":"add","value":3}]]},
+    {"id":"expensive_flip","name":"Expensive Flip","desc":"Flip cost 8 %.","ranks":[1],"effects":[[{"stat":"FlipCost","op":"add","value":3}]]},
+    {"id":"slow_cooling","name":"Slow Cooling","desc":"RENDER drain 3/2 %/s.","ranks":[1,2],"effects":[[{"stat":"RenderDrain","op":"add","value":-1}],[{"stat":"RenderDrain","op":"add","value":-2}]]},
+    {"id":"tight_deadline","name":"Tight Deadline","desc":"Par -10/20/30 %; TRACE +1 at par.","ranks":[1,2,3],"effects":[[{"stat":"flag:tight_deadline","value":0.1}],[{"stat":"flag:tight_deadline","value":0.2}],[{"stat":"flag:tight_deadline","value":0.3}]]},
+    {"id":"double_patrol","name":"Double Patrol","desc":"+1 Guard Drone per room.","ranks":[2],"effects":[[{"stat":"flag:double_patrol","value":1}]]},
+    {"id":"tracker_swarm","name":"Tracker Swarm","desc":"Tracker ICE replaces 50 % of hunters.","ranks":[2],"effects":[[{"stat":"flag:tracker_swarm","value":0.5}]]},
+    {"id":"long_sequences","name":"Long Sequences","desc":"+1/+2 arrows per hack.","ranks":[1,2],"effects":[[{"stat":"HackLengthDelta","op":"add","value":1}],[{"stat":"HackLengthDelta","op":"add","value":2}]]},
+    {"id":"scrambled_prompts","name":"Scrambled Prompts","desc":"30 % of hacks mirrored.","ranks":[2],"effects":[[{"stat":"flag:scrambled_prompts","value":0.3}]]},
+    {"id":"unstable_reality","name":"Unstable Reality","desc":"Glitch zones +50 %.","ranks":[1],"effects":[[{"stat":"flag:unstable_reality","value":0.5}]]},
+    {"id":"no_backups","name":"No Backups","desc":"Backups cannot be held.","ranks":[3],"effects":[[{"stat":"flag:no_backups","value":0}]]},
+    {"id":"poor_market","name":"Poor Market","desc":"Black Market prices +50 %.","ranks":[1],"effects":[[{"stat":"flag:poor_market","value":0.5}]]},
+    {"id":"fewer_choices","name":"Fewer Choices","desc":"Exploit offers are 1-of-2; halves Ghost Cache rerolls.","ranks":[2],"effects":[[{"stat":"flag:fewer_choices","value":2}]]},
+    {"id":"auditor_protocol","name":"Auditor Protocol","desc":"Auditor Drones spawn at TRACE 1.","ranks":[1],"effects":[[{"stat":"flag:auditor_protocol","value":1}]]},
+    {"id":"boss_overclock","name":"Boss Overclock","desc":"Boss heat variants 1/2/3.","ranks":[1,2,3],"effects":[[{"stat":"flag:boss_overclock","value":1}],[{"stat":"flag:boss_overclock","value":2}],[{"stat":"flag:boss_overclock","value":3}]]},
+    {"id":"persistent_melt","name":"Persistent Melt","desc":"Melt carries over 100 % between rooms, not 50 %.","ranks":[1],"conflicts":["cold_boot"],"effects":[[{"stat":"flag:persistent_melt","value":1}]]},
+    {"id":"gaze_everywhere","name":"Gaze Everywhere","desc":"Watcher Eyes in every Act 3 room.","ranks":[3],"effects":[[{"stat":"flag:gaze_everywhere","value":0}]]},
+    {"id":"blackout","name":"Blackout","desc":"RENDER lighting -40 %, palettes enforced.","ranks":[1],"effects":[[{"stat":"flag:blackout","value":0.4}]]},
+
+    {"id":"double_melt","name":"Double Melt","desc":"Melt x2, score x1.3.","tag":"melt","runMutator":true,"effects":[[{"stat":"SourceRise","op":"mul","value":2},{"stat":"ScoreMult","op":"mul","value":1.3}]]},
+    {"id":"cold_source","name":"Cold Source","desc":"Melt x0.6, ICE chase x1.25.","tag":"ice","runMutator":true,"effects":[[{"stat":"SourceRise","op":"mul","value":0.6},{"stat":"IceSpeedMult","op":"mul","value":1.25}]]},
+    {"id":"blind_cams","name":"Blind Cams","desc":"Cameras off, TRACE only from drones, score x0.9.","tag":"cams","runMutator":true,"effects":[[{"stat":"flag:blind_cams","value":0},{"stat":"ScoreMult","op":"mul","value":0.9}]]},
+    {"id":"ice_swarm","name":"ICE Swarm","desc":"+1 ICE.","tag":"ice","runMutator":true,"effects":[[{"stat":"flag:ice_swarm","value":1}]]},
+    {"id":"mirror","name":"Mirror","desc":"Layout mirrored.","tag":"layout","runMutator":true,"effects":[[{"stat":"flag:mirror","value":0}]]},
+    {"id":"dead_zones","name":"Dead Zones","desc":"1-2 floor strips where SPACE is disabled.","tag":"flip","runMutator":true,"effects":[[{"stat":"flag:dead_zones","value":2}]]},
+    {"id":"overclock","name":"Overclock","desc":"Timer shown, gold -15 %, score x1.4.","tag":"time","runMutator":true,"effects":[[{"stat":"flag:overclock","value":0.15},{"stat":"ScoreMult","op":"mul","value":1.4}]]},
+    {"id":"flicker","name":"Flicker","desc":"Glitch zones force-flip every 6 s, 1 s telegraph.","tag":"flip","runMutator":true,"effects":[[{"stat":"flag:flicker","value":6}]]},
+    {"id":"spotlight","name":"Spotlight","desc":"Cameras sweep 30 % faster.","tag":"cams","runMutator":true,"effects":[[{"stat":"flag:spotlight","value":0.3}]]},
+    {"id":"gaze","name":"Gaze","desc":"Architect gaze sweep every 12 s (node 4 and later).","tag":"gaze","runMutator":true,"effects":[[{"stat":"flag:gaze","value":12,"when":"node>=4"}]]}
+  ]
+}

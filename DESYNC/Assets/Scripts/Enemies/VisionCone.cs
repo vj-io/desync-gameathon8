@@ -5,6 +5,8 @@ namespace Desync.Enemies
     /// Sensor cone on cameras, drones and the Architect. LOS = raycasts from this transform (the eye) to PlayerRef.Head and
     /// PlayerRef.Chest, blocked by WallRender|Floor. Seen for traceDwell seconds -> TraceSystem. Visuals: additive cone mesh
     /// (mat.cone / mat.cone.trace) + a shadowless spot light coloured by state. Active only in RENDER unless bothLayers.
+    /// Exploits: Spoofed Badge (ignore the first camera detection), Proxy Chain (cameras add no TRACE at chain >= 5), a visible
+    /// decoy distracts the cone (Afterimage / Poltergeist), Sysadmin Key (cones drawn through walls: Art.ConeMats x-ray materials).
     public class VisionCone : MonoBehaviour, IResettable
     {
         public float angle = 60f;          // full cone angle, degrees
@@ -20,10 +22,21 @@ namespace Desync.Enemies
 
         static readonly Color Idle = new Color(1f, 0.55f, 0.9f), Seeing = new Color(1f, 0.62f, 0.1f), Blind = new Color(0f, 0.55f, 0.6f);
 
-        float _dwell, _last;
-        int _state = -1;
+        float _dwell, _last, _mult = 1f, _spotRange = -1f;
+        int _state = -1, _kind = -1;
 
-        public bool Active => !Suppressed && (bothLayers || Jammer || !LayerState.InSource);
+        /// 1 = security camera (CameraSweep above it), 2 = guard drone (DronePatrol above it), 0 = anything else. Found on
+        /// first use, so cones in prebuilt scenes are classified too.
+        int Kind => _kind >= 0 ? _kind : _kind = GetComponentInParent<CameraSweep>() ? 1 : GetComponentInParent<DronePatrol>() ? 2 : 0;
+
+        /// Cameras and drones see CameraRangeMult further (the Architect's gaze is not a camera); SIGNAL JAM shortens drones.
+        float Mult => bothLayers ? 1f : GameState.Mods.CameraRangeMult * (EnemyFlags.SignalJam && Kind == 2 ? EnemyFlags.SignalJamRange : 1f);
+
+        /// Effective detection range this frame.
+        public float Range => range * Mult;
+
+        /// BLIND CAMS switches camera cones off (drones and other sensors still see).
+        public bool Active => !Suppressed && !(EnemyFlags.BlindCams && Kind == 1) && (bothLayers || Jammer || !LayerState.InSource);
         public float Dwell => _dwell;
 
         void Update()
@@ -31,16 +44,27 @@ namespace Desync.Enemies
             float dt = EnemyKit.Step(ref _last);
             bool active = Active;
             bool blinded = active && blindable && !Jammer && HijackedDrone.Jams(this);
-            if (active && !Jammer && !blinded && CanSeePlayer())
+            bool canSee = active && !Jammer && !blinded;
+            if (canSee && Distracted()) _dwell = 0f;   // a visible decoy pulls this cone off the player (Afterimage / Poltergeist)
+            else if (canSee && CanSeePlayer())
             {
                 if (_dwell <= 0f) GameEvents.Spotted?.Invoke(transform.position);
                 _dwell += dt + 1e-6f;
                 TraceSystem.Seen(PlayerRef.Position);
-                if (_dwell >= GameConfig.I.traceDwell) TraceSystem.Sustain();
+                if (_dwell >= GameState.Mods.Clamped().TraceWindow && !(Kind == 1 && ExploitFlags.CameraTraceOff))   // Proxy Chain
+                {
+                    if (Kind == 1 && ExploitFlags.SpoofedBadge && !ExploitFlags.SpoofUsed) { ExploitFlags.SpoofUsed = true; _dwell = 0f; }   // Spoofed Badge
+                    else TraceSystem.Sustain();
+                }
             }
             else _dwell = 0f;
             Show(active, blinded);
+            float mult = Mult;
+            if (mult != _mult) Rescale(mult);
         }
+
+        /// A live decoy sits in this cone with line of sight: the cone locks onto it instead of the player (no player TRACE).
+        bool Distracted() => Decoys.Count > 0 && Decoys.Nearest(transform.position, Range, out Vector3 p, out _) && SeesPoint(p);
 
         bool CanSeePlayer()
         {
@@ -48,12 +72,13 @@ namespace Desync.Enemies
             return Sees(PlayerRef.Head) || Sees(PlayerRef.Chest);
         }
 
-        bool Sees(Transform target)
+        bool Sees(Transform target) => target && SeesPoint(target.position);
+
+        bool SeesPoint(Vector3 point)
         {
-            if (!target) return false;
-            Vector3 eye = transform.position, d = target.position - eye;
+            Vector3 eye = transform.position, d = point - eye;
             float m = d.magnitude;
-            if (m > range || Vector3.Angle(transform.forward, d) > angle * 0.5f) return false;
+            if (m > Range || Vector3.Angle(transform.forward, d) > angle * 0.5f) return false;
             return m < 1e-3f || !Physics.Raycast(eye, d / m, m, EnemyKit.SightMask, QueryTriggerInteraction.Ignore);
         }
 
@@ -68,12 +93,23 @@ namespace Desync.Enemies
             {
                 coneRenderer.enabled = s != 0;
                 var m = s == 3 ? traceMat : normalMat;
+                if (ExploitFlags.SysadminKey) { var x = Art.ConeMats.Get(s == 3, true); if (x) m = x; }   // depth test Always: through walls
                 if (m) coneRenderer.sharedMaterial = m;
             }
             if (!spot) return;
             spot.enabled = s != 0;
             var cfg = GameConfig.I;
             spot.color = s == 2 ? Seeing : s == 3 ? cfg.danger : s == 4 ? Blind : s == 5 ? cfg.cyan : Idle;
+        }
+
+        /// The drawn cone and its light follow the detection range (uniform scale keeps the angle).
+        void Rescale(float mult)
+        {
+            _mult = mult;
+            if (coneRenderer) coneRenderer.transform.localScale = Vector3.one * mult;
+            if (!spot) return;
+            if (_spotRange < 0f) _spotRange = spot.range;   // the factory's range, read before the first change
+            spot.range = _spotRange * mult;
         }
 
         public void ResetState() { _dwell = 0f; _last = 0f; _state = -1; Suppressed = Jammer = false; }

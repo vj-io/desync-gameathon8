@@ -1,0 +1,9 @@
+{
+  "name": "Desync.Content",
+  "rootNamespace": "Desync.Content",
+  "references": ["Desync.Rules"],
+  "overrideReferences": true,
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
+  "noEngineReferences": true,
+  "autoReferenced": true
+}
