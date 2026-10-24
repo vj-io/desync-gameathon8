@@ -1,3 +1,4 @@
+using Desync.Flow;
 using PrimeTween;
 using TMPro;
 using UnityEngine;
@@ -5,13 +6,27 @@ using UnityEngine.UI;
 
 namespace Desync.UI
 {
-    /// Title scene overlay + attract mode (orbiting camera, backdrop flips RENDER/SOURCE every ~3 s).
+    /// Title scene overlay + attract mode (orbiting camera, backdrop flips RENDER/SOURCE every ~3 s) + mode menu:
+    /// CAMPAIGN BREACH / QUICK BREACH / CLASSIC (6 ROOMS) / DAILY (greyed, soon). Mouse (hover + click), arrows / WASD /
+    /// pad d-pad to move, SPACE / Enter / pad A / Start or a click on the backdrop to start the highlighted mode.
     public sealed class TitleScreen : UIPanel
     {
         GlitchLabel _logo;
-        TMP_Text _tag, _intro, _jackIn, _meta, _sensVal, _caption, _goals;
-        Image _jackFrame;
+        TMP_Text _tag, _intro, _meta, _sensVal, _caption, _goals;
         Slider _sens;
+        UIButton[] _items; int _sel;
+        static readonly RunMode[] Modes = { RunMode.Campaign, RunMode.Quick, RunMode.Classic, RunMode.Daily };
+        static readonly string[] Labels = { "CAMPAIGN BREACH", "QUICK BREACH", "CLASSIC (6 ROOMS)", "DAILY · SOON" };
+        static readonly string[] Blurbs =
+        {
+            "BRANCHING MAP · EXPLOITS · BOSSES",
+            "ACT 1 + THE AUDITOR · ~6 MIN",
+            "THE ORIGINAL SIX ROOMS · ~8 MIN",
+            "ONE SHARED SEED A DAY · SOON",
+        };
+        /// Highlighted on every Show. CLASSIC keeps "click / SPACE / pad = jack in to Room 01" as the one-press path.
+        internal const int DefaultItem = 2, DailyItem = 3;
+        internal int Selected => _sel;
         Tween _pulse, _clickTw;
         Camera _cam; float _radius, _height, _angle;
         float _flipT, _introT, _introChars, _introDelay;
@@ -48,25 +63,28 @@ namespace Desync.UI
             _intro.textWrappingMode = TextWrappingModes.Normal;
             UIKit.Place(_intro.rectTransform, Anc.C, new Vector2(0, -30), new Vector2(1240, 130));
 
-            var jb = UIKit.Img(card.transform, "JackIn", new Color(UIKit.Magenta.r, UIKit.Magenta.g, UIKit.Magenta.b, 0.14f));
-            UIKit.Place(jb.rectTransform, Anc.C, new Vector2(0, -175), new Vector2(980, 120));
-            _jackFrame = UIKit.Img(jb.transform, "Frame", UIKit.Magenta, UIKit.Frame, Image.Type.Sliced); UIKit.Stretch(_jackFrame.rectTransform);
-            _jackIn = UIKit.Text(jb.transform, "Label", UIKit.Title, 76, UIKit.Magenta, TextAlignmentOptions.Center, "CLICK TO JACK IN");
-            _jackIn.fontStyle = FontStyles.Bold; _jackIn.characterSpacing = 6f; UIKit.Stretch(_jackIn.rectTransform);
-            _jackPanel = jb.rectTransform;
+            _items = new UIButton[Modes.Length];
+            for (int i = 0; i < Modes.Length; i++)
+            {
+                int k = i;
+                var col = i == DailyItem ? new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f) : i == 0 ? UIKit.Magenta : UIKit.Cyan;
+                var b = UIButton.Create(card.transform, "Mode" + i, Labels[i], Anc.C, new Vector2(i % 2 == 0 ? -250 : 250, i < 2 ? -132 : -224), new Vector2(470, 80), 30, col, () => Pick(k));
+                b.Label.characterSpacing = 3f;
+                if (i == DailyItem) b.Hot = col;   // greyed: no hover highlight
+                else b.Hovered = () => Select(k);
+                _items[i] = b;
+            }
 
-            _meta = UIKit.Text(card.transform, "Meta", UIKit.Hud, 30, UIKit.Dim, TextAlignmentOptions.Center, "~8 min · 6 rooms · CLICK, SPACE OR PAD START");
-            _meta.characterSpacing = 4f; UIKit.Place(_meta.rectTransform, Anc.C, new Vector2(0, -272), new Vector2(900, 40));
+            _meta = UIKit.Text(card.transform, "Meta", UIKit.Hud, 26, UIKit.Dim, TextAlignmentOptions.Center);
+            _meta.characterSpacing = 4f; UIKit.Place(_meta.rectTransform, Anc.C, new Vector2(0, -292), new Vector2(1400, 36));
 
             var sl = UIKit.Text(card.transform, "SensLabel", UIKit.Hud, 26, UIKit.Dim, TextAlignmentOptions.Right, "SENSITIVITY");
-            UIKit.Place(sl.rectTransform, Anc.C, new Vector2(-390, -330), new Vector2(260, 36));
-            _sens = UIControls.NewSlider(card.transform, "SensSlider", Anc.C, new Vector2(0, -330), 420, 0.1f, 3f, Settings.Sensitivity, OnSens);
+            UIKit.Place(sl.rectTransform, Anc.C, new Vector2(-390, -342), new Vector2(260, 36));
+            _sens = UIControls.NewSlider(card.transform, "SensSlider", Anc.C, new Vector2(0, -342), 420, 0.1f, 3f, Settings.Sensitivity, OnSens);
             _sensVal = UIKit.Text(card.transform, "SensValue", UIKit.Hud, 26, UIKit.Cyan, TextAlignmentOptions.Left);
-            UIKit.Place(_sensVal.rectTransform, Anc.C, new Vector2(300, -330), new Vector2(140, 36));
+            UIKit.Place(_sensVal.rectTransform, Anc.C, new Vector2(300, -342), new Vector2(140, 36));
             _sensVal.SetText("{0:0.00}", Settings.Sensitivity);
         }
-
-        RectTransform _jackPanel;
 
         sealed class TitleClick : MonoBehaviour, UnityEngine.EventSystems.IPointerDownHandler
         {
@@ -84,21 +102,41 @@ namespace Desync.UI
             GameEvents.SettingsChanged?.Invoke();
         }
 
+        void Select(int i)
+        {
+            if (i == DailyItem || i < 0 || i >= _items.Length) return;
+            if (_items[_sel] && _sel != i) _items[_sel].transform.localScale = Vector3.one;
+            _sel = i;
+            for (int k = 0; k < _items.Length; k++) _items[k].SetSelected(k == i);
+            _meta.SetText(Blurbs[i] + "  ·  ↑↓←→ CHOOSE  ·  CLICK, SPACE OR PAD A TO JACK IN");
+            UIKit.Kill(ref _pulse);
+            _pulse = Tween.Scale(_items[i].transform, 1f, 1.04f, 0.55f, Ease.InOutSine, cycles: -1, cycleMode: CycleMode.Yoyo, useUnscaledTime: true);
+        }
+
+        void Pick(int i)
+        {
+            if (i == DailyItem) { _logo.Glitch(1.4f, 0.3f); UIKit.Pop(ref _clickTw, _items[i].transform, 0.9f, 0.2f); return; }   // not yet
+            Select(i);
+            Start0();
+        }
+
+        /// Starts the highlighted mode (backdrop click, SPACE / Enter / pad, or a mode button).
         void Start0()
         {
             if (_started) return;
             _started = true;
-            _jackIn.SetText("JACKING IN...");
+            UIKit.Kill(ref _pulse);
+            _items[_sel].Label.SetText("JACKING IN...");
             _logo.Glitch(2.2f, 0.4f);
-            UIKit.Pop(ref _clickTw, _jackPanel, 0.85f, 0.25f);
-            GameEvents.StartRequested?.Invoke(0);
+            UIKit.Pop(ref _clickTw, _items[_sel].transform, 0.85f, 0.25f);
+            RunView.Start(Modes[_sel]);
         }
 
         public override void Show()
         {
             base.Show();
             _started = false; _cam = null;
-            _jackIn.SetText("CLICK TO JACK IN");
+            for (int i = 0; i < _items.Length; i++) { _items[i].Label.SetText(Labels[i]); _items[i].transform.localScale = Vector3.one; }
             var cfg = GameConfig.I;
             _intro.SetText(cfg.introLines != null && cfg.introLines.Length > 0 ? cfg.introLines[0] : "");
             _intro.maxVisibleCharacters = 0; _introChars = 0; _introShown = 0; _introDelay = 0.9f;
@@ -110,10 +148,8 @@ namespace Desync.UI
             _flipT = FlipEvery;
             LayerState.Set(false);
             _shownSource = false; Tint();
-            UIKit.Kill(ref _pulse);
-            _jackPanel.localScale = Vector3.one;
-            _pulse = Tween.Scale(_jackPanel, 1f, 1.045f, 0.55f, Ease.InOutSine, cycles: -1, cycleMode: CycleMode.Yoyo, useUnscaledTime: true);
-            FreeCursor();
+            _sel = DefaultItem; Select(DefaultItem);
+            UIKit.FreeCursor();
         }
 
         /// "BEST m:ss · MEDALS n/24": total of the best room times; medals count every tier earned (BRONZE 1 .. SYNC 4 per room).
@@ -133,12 +169,6 @@ namespace Desync.UI
             base.Hide();
         }
 
-        static void FreeCursor()
-        {
-            if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
-            if (!Cursor.visible) Cursor.visible = true;
-        }
-
         void Tint()
         {
             var c = _shownSource ? UIKit.Green : UIKit.Cyan;
@@ -149,8 +179,10 @@ namespace Desync.UI
         public override void Tick(float dt)
         {
             if (_started) return;
-            FreeCursor();
-            if (GameInput.Flip.WasPressedThisFrame() || UIKit.PadConfirm) { Start0(); return; }   // Space / pad South / pad Start (click path stays)
+            UIKit.FreeCursor();
+            if (UIKit.Confirm.WasPressedThisFrame()) { Start0(); return; }   // Space / Enter / pad South / pad Start (click path stays)
+            int step = UIKit.NavStep;
+            if (step != 0) Select(((_sel + step) % DailyItem + DailyItem) % DailyItem);   // DAILY is not selectable yet
             Orbit(dt);
             _flipT -= dt;
             if (_flipT <= 0f)

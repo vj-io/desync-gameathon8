@@ -1,3 +1,4 @@
+using Desync.Flow;
 using PrimeTween;
 using TMPro;
 using UnityEngine;
@@ -8,9 +9,11 @@ namespace Desync.UI
     /// Death recap (GameEvents.DeathRecap): cause card at the bottom, a ring on the killer when it is on screen or an
     /// edge arrow pointing at it when it is not. Flow freezes time and raises Rebooting when it ends (any key skips).
     /// The 60 % desaturation is the post-FX pass (PostFXController listens to the same event).
+    /// In a BREACH run the Backup is already spent when the recap fires: the card says BACKUP USED (n left) or RUN OVER
+    /// (RunManager.I.RunLost: this recap ends the run and leads to the run results).
     public sealed class RecapScreen : UIPanel
     {
-        TMP_Text _cause, _time, _near, _any, _tag, _arrow;
+        TMP_Text _cause, _time, _near, _any, _tag, _arrow, _run;
         RectTransform _card, _marker, _arrowRt, _tagRt; Image _ring; Tween _pop;
         bool _hasKiller; Vector3 _killerPos; float _t;
         const float EdgeInset = 90f;
@@ -45,6 +48,10 @@ namespace Desync.UI
             UIKit.Place(tl.rectTransform, Anc.TL, new Vector2(48, -150), new Vector2(220, 40));
             _time = UIKit.Text(card.transform, "Time", UIKit.Hud, 40, UIKit.Paper, TextAlignmentOptions.Left); _time.fontStyle = FontStyles.Bold;
             UIKit.Place(_time.rectTransform, Anc.TL, new Vector2(270, -146), new Vector2(740, 48));
+
+            _run = UIKit.Text(card.transform, "RunStatus", UIKit.Hud, 34, UIKit.Green, TextAlignmentOptions.Right); _run.fontStyle = FontStyles.Bold; _run.characterSpacing = 4f;
+            UIKit.Place(_run.rectTransform, Anc.TR, new Vector2(-48, -146), new Vector2(440, 48));
+            _run.gameObject.SetActive(false);
 
             _near = UIKit.Text(card.transform, "NearMiss", UIKit.Hud, 32, UIKit.Green, TextAlignmentOptions.Center); _near.characterSpacing = 4f;
             UIKit.Place(_near.rectTransform, Anc.T, new Vector2(0, -206), new Vector2(980, 40));
@@ -82,6 +89,10 @@ namespace Desync.UI
             _killerPos = d.killerPos;
             _marker.gameObject.SetActive(_hasKiller);
             if (_hasKiller) _tag.SetText(d.killerId);
+            bool run = RunView.Active && RunManager.I, lost = run && RunManager.I.RunLost;
+            _run.gameObject.SetActive(run);
+            if (run) { _run.SetText(lost ? "RUN OVER" : "BACKUP USED · " + RunState.Backups + " LEFT"); _run.color = lost ? UIKit.Danger : UIKit.Green; }
+            _any.SetText(lost ? "ANY KEY ► RUN RESULTS" : "ANY KEY ► REBOOT");
             UIKit.Pop(ref _pop, _card, 0.8f, 0.22f);
             Tick(0f);
         }

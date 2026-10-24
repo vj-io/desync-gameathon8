@@ -1,4 +1,6 @@
 using System.Text;
+using Desync.Content;
+using Desync.Flow;
 using PrimeTween;
 using TMPro;
 using UnityEngine;
@@ -17,12 +19,13 @@ namespace Desync.UI
         string[] _roomCodes, _pipStr, _bannerPips; int _traceMax;
         int _ri = -99, _cs = -1, _td = -1, _tt = -1, _tc = -1; bool _exitOpen;
         readonly char[] _clock = new char[8];
+        LiveText _timerL, _scoreL, _multL, _ghostL, _traceL, _meltL, _glitchL, _lockL, _hjL, _bossL;
         // ---- medal ticks (under the timer)
         GameObject _medalGo; TMP_Text _medalNext; Image _medalFill; Image[] _medalTicks; string[] _medalLabels = new string[5];
         float _tDev = -1f; int _medal = -1;
         // ---- score block (top-right)
         TMP_Text _score, _mult, _ghost; RectTransform _multRt; int _scoreShown = -1, _mult100 = -1, _chain = -1; float _multPulse;
-        sealed class ScorePopUI { public RectTransform Rt; public TMP_Text Pts, Label; public CanvasGroup G; public float Age, Off, TargetOff; public bool On; }
+        sealed class ScorePopUI { public RectTransform Rt; public TMP_Text Pts, Label; public LiveText PtsL; public CanvasGroup G; public float Age, Off, TargetOff; public bool On; }
         ScorePopUI[] _spops;
         static readonly string[] EventLabels = Spaced(System.Enum.GetNames(typeof(Desync.Rules.EventType)));   // "CleanFlip" -> "CLEAN FLIP"
         static string[] Spaced(string[] a)
@@ -63,6 +66,15 @@ namespace Desync.UI
         GameObject _rebootGo; CanvasGroup _rebootGroup; GlitchLabel _rebootLabel; float _rebootT; bool _rebootOn;
         // ---- control card
         CanvasGroup _cardGroup; RectTransform[] _chips; float _cardT; int _cardState; Tween _cardFade;
+        // ---- BREACH run block: held exploits (bottom-right, glow while their condition holds), backups, room mutator chips
+        GameObject _runGo; bool _runOn; string _nodeShown; int _nodeNum;
+        RectTransform[] _xRt; Image[] _xBorder, _xGlow; TMP_Text[] _xGlyph, _xInit; string[] _xWhen; bool[] _xLit; readonly Exploit[] _xShown = new Exploit[Loadout.MaxHeld]; int _xCount = -1;
+        GameObject[] _mGo; TMP_Text[] _mText; readonly Mutator[] _mShown = new Mutator[2]; int _mCount = -1;
+        TMP_Text _backups; int _bShown = -1;
+        // ---- AUDITOR boss bar (under the layer tag) + Tracker ICE spawn cue (edge arrow toward the nest)
+        GameObject _bossGo; TMP_Text _bossText; Image _bossFill; int _bossPhase = -1, _up10 = -2;
+        RectTransform _trkRt; TMP_Text _trk; float _trkT; Vector3 _trkPos;
+        static readonly string[] BossLabels = { "AUDITOR · P1 · SCANNING", "AUDITOR · P2 · ESCALATED", "AUDITOR · P3 · UPLINK", "AUDITOR · UPLINK REACHED" };
 
         const float Cps = 64f, MeltShakeAt = 90f, MultPulse = 0.12f, PopLife = 0.9f, HintLife = 4f;
 
@@ -115,6 +127,7 @@ namespace Desync.UI
             UIKit.Place(_traces.rectTransform, Anc.TL, new Vector2(24, -184), new Vector2(520, 34));
 
             BuildScoreBlock();
+            BuildRunBlock();
 
             // ---- trace banner (under the layer tag)
             var tb = UIKit.Img(Root, "TraceBanner", new Color(danger.r * 0.35f, 0f, 0.02f, 0.88f));
@@ -128,6 +141,17 @@ namespace Desync.UI
             _tracePips = UIKit.Text(tb.transform, "Pips", hud, 38, danger, TextAlignmentOptions.Right, _bannerPips[0]);
             UIKit.Place(_tracePips.rectTransform, Anc.R, new Vector2(-18, 0), new Vector2(150, 60));
             tb.gameObject.SetActive(false);
+
+            // ---- AUDITOR boss bar (below the trace banner)
+            var bb = UIKit.Box(Root, "Boss", danger, 0.75f);
+            UIKit.Place(bb.rectTransform, Anc.T, new Vector2(0, -232), new Vector2(560, 62)); _bossGo = bb.gameObject;
+            _bossText = UIKit.Text(bb.transform, "Label", hud, 30, paper, TextAlignmentOptions.Center); _bossText.fontStyle = FontStyles.Bold; _bossText.characterSpacing = 4f;
+            UIKit.Stretch(_bossText.rectTransform, 0, 8, 0, 0);
+            var bf = UIKit.Img(bb.transform, "BarBg", new Color(1, 1, 1, 0.12f)); UIKit.Place(bf.rectTransform, Anc.B, new Vector2(0, 6), new Vector2(536, 6));
+            _bossFill = UIKit.Img(bf.transform, "Fill", danger); UIKit.Stretch(_bossFill.rectTransform); _bossFill.type = Image.Type.Filled; _bossFill.fillMethod = Image.FillMethod.Horizontal;
+            _bossGo.SetActive(false);
+            _trk = UIKit.Text(Root, "TrackerCue", hud, 72, danger, TextAlignmentOptions.Center, "▲");
+            _trkRt = UIKit.Place(_trk.rectTransform, Anc.C, Vector2.zero, new Vector2(90, 90)); _trk.gameObject.SetActive(false);
 
             // ---- top-right stack (under the score block): demo / hijack / lockdown
             var demo = UIKit.Box(Root, "Demo", cyan, 0.7f);
@@ -237,6 +261,9 @@ namespace Desync.UI
             _hintGo.SetActive(false);
 
             SetLayer(false, false);
+            _timerL = new LiveText(_timer); _scoreL = new LiveText(_score); _multL = new LiveText(_mult); _ghostL = new LiveText(_ghost);
+            _traceL = new LiveText(_traceText); _meltL = new LiveText(_melt); _glitchL = new LiveText(_glitchNum); _lockL = new LiveText(_lock);
+            _hjL = new LiveText(_hjText); _bossL = new LiveText(_bossText);
         }
 
         void BuildMedalRow(Transform parent)
@@ -278,9 +305,138 @@ namespace Desync.UI
                 UIKit.Place(p.Pts.rectTransform, Anc.R, Vector2.zero, new Vector2(170, 44));
                 p.Label = UIKit.Text(rt, "Label", hud, 24, UIKit.Dim, TextAlignmentOptions.Right); p.Label.characterSpacing = 4f;
                 UIKit.Place(p.Label.rectTransform, Anc.R, new Vector2(-180, -2), new Vector2(280, 34));
+                p.PtsL = new LiveText(p.Pts);
                 rt.gameObject.SetActive(false);
                 _spops[i] = p;
             }
+        }
+
+        void BuildRunBlock()
+        {
+            var run = UIKit.Stretch(UIKit.Obj(Root, "Run")); _runGo = run.gameObject;
+            int n = Loadout.MaxHeld;
+            _xRt = new RectTransform[n]; _xBorder = new Image[n]; _xGlow = new Image[n]; _xGlyph = new TMP_Text[n]; _xInit = new TMP_Text[n]; _xWhen = new string[n]; _xLit = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                var rt = UIKit.Place(UIKit.Obj(run, "Exploit" + i), Anc.BR, Vector2.zero, new Vector2(84, 84));
+                _xGlow[i] = UIKit.Img(rt, "Glow", Color.clear, UIKit.Disc); UIKit.Stretch(_xGlow[i].rectTransform, -20, -20, -20, -20);
+                var bg = UIKit.Img(rt, "Bg", new Color(UIKit.Ink.r, UIKit.Ink.g, UIKit.Ink.b, 0.82f)); UIKit.Stretch(bg.rectTransform);
+                _xBorder[i] = UIKit.Img(rt, "Border", UIKit.Cyan); UIKit.Stretch(_xBorder[i].rectTransform);
+                _xGlyph[i] = UIKit.Text(rt, "Glyph", UIKit.Hud, 40, UIKit.Cyan, TextAlignmentOptions.Center); UIKit.Place(_xGlyph[i].rectTransform, Anc.T, new Vector2(0, -6), new Vector2(84, 48));
+                _xInit[i] = UIKit.Text(rt, "Init", UIKit.Hud, 20, UIKit.Paper, TextAlignmentOptions.Center); _xInit[i].characterSpacing = 4f;
+                UIKit.Place(_xInit[i].rectTransform, Anc.B, new Vector2(0, 6), new Vector2(84, 26));
+                _xRt[i] = rt; rt.gameObject.SetActive(false);
+            }
+            _backups = UIKit.Text(run, "Backups", UIKit.Hud, 28, UIKit.Green, TextAlignmentOptions.Right); _backups.fontStyle = FontStyles.Bold; _backups.characterSpacing = 4f;
+            UIKit.Place(_backups.rectTransform, Anc.BR, new Vector2(-36, 128), new Vector2(300, 36));
+            _mGo = new GameObject[2]; _mText = new TMP_Text[2];
+            for (int i = 0; i < 2; i++)   // under the room block (top-left): mutators belong to the room
+            {
+                var chip = UIKit.Box(run, "Mutator" + i, UIKit.Magenta, 0.75f);
+                UIKit.Place(chip.rectTransform, Anc.TL, new Vector2(32 + i * 284, -280), new Vector2(272, 44)); _mGo[i] = chip.gameObject;
+                _mText[i] = UIKit.Text(chip.transform, "Label", UIKit.Hud, 22, UIKit.Magenta, TextAlignmentOptions.Center); _mText[i].characterSpacing = 3f;
+                UIKit.Stretch(_mText[i].rectTransform, 8, 0, 8, 0);
+                _mGo[i].SetActive(false);
+            }
+            _runGo.SetActive(false);
+        }
+
+        /// BREACH only: loadout / mutators / backups change -> rebuild (allocates, rare); every frame the conditional glow (no allocation).
+        void TickRun()
+        {
+            bool on = RunView.Active;
+            if (on != _runOn) { _runOn = on; _runGo.SetActive(on); _xCount = -1; _mCount = -1; _bShown = -1; }
+            if (!on) return;
+            if (GameState.Chain > RunView.BestChain) RunView.BestChain = GameState.Chain;
+
+            var held = RunState.Held;
+            bool changed = held.Count != _xCount;
+            for (int i = 0; i < held.Count && i < _xShown.Length && !changed; i++) changed = !ReferenceEquals(held[i], _xShown[i]);
+            if (changed)
+            {
+                _xCount = held.Count;
+                int n = Mathf.Min(held.Count, _xShown.Length);
+                for (int i = 0; i < _xShown.Length; i++)
+                {
+                    _xShown[i] = i < held.Count ? held[i] : null;
+                    _xRt[i].gameObject.SetActive(i < n);
+                    if (i >= n) continue;
+                    var e = held[i]; var c = RunView.ArchColor(e.archetype);
+                    _xRt[i].anchoredPosition = new Vector2(-36 - (n - 1 - i) * 96, 34);
+                    UIKit.SetBorder(_xBorder[i], (int)e.rarity, 1f); _xBorder[i].color = c;
+                    _xGlyph[i].SetText(RunView.ArchGlyph[(int)e.archetype]); _xGlyph[i].color = c;
+                    _xInit[i].SetText(RunView.Initials(e.name));
+                    _xWhen[i] = RunView.When(e); _xLit[i] = false;
+                    _xGlow[i].color = new Color(c.r, c.g, c.b, 0f); _xRt[i].localScale = Vector3.one;
+                }
+            }
+            var muts = RunState.RoomMutators;
+            bool mch = muts.Count != _mCount;
+            for (int i = 0; i < muts.Count && i < _mShown.Length && !mch; i++) mch = !ReferenceEquals(muts[i], _mShown[i]);
+            if (mch)
+            {
+                _mCount = muts.Count;
+                for (int i = 0; i < _mShown.Length; i++)
+                {
+                    _mShown[i] = i < muts.Count ? muts[i] : null;
+                    _mGo[i].SetActive(_mShown[i] != null);
+                    if (_mShown[i] != null) _mText[i].SetText(UIKit.Safe(_mShown[i].name.ToUpperInvariant(), UIKit.Hud));
+                }
+            }
+            if (RunState.Backups != _bShown) { _bShown = RunState.Backups; _backups.SetText("BACKUP " + RunView.Backups(_bShown)); _backups.color = _bShown > 0 ? UIKit.Green : UIKit.Dim; }
+
+            var ctx = RunView.Live(_nodeNum);
+            float pulse = 0.4f + 0.2f * Mathf.Sin(Time.unscaledTime * 7f);
+            for (int i = 0; i < _xCount && i < _xShown.Length; i++)
+            {
+                if (_xShown[i] != null && _xShown[i].rarity == Rarity.E) UIKit.AnimateBorder(_xBorder[i]);
+                bool lit = _xWhen[i] != null && Conditions.Eval(_xWhen[i], ctx);
+                if (lit != _xLit[i]) { _xLit[i] = lit; if (lit) _xRt[i].localScale = Vector3.one * 1.18f; }
+                if (lit || _xGlow[i].color.a > 0f)
+                {
+                    var g = _xGlow[i].color; g.a = lit ? pulse : 0f; _xGlow[i].color = g;
+                    float s = _xRt[i].localScale.x; if (s > 1f) _xRt[i].localScale = Vector3.one * Mathf.Max(1f, s - Time.unscaledDeltaTime * 1.5f);
+                }
+            }
+        }
+
+        /// AUDITOR phase, and the uplink countdown in P3 (Enemies.Auditor.Current; null outside the boss arena).
+        void TickBoss(float dt)
+        {
+            var a = Desync.Enemies.Auditor.Current;
+            bool on = a != null;
+            if (on != _bossGo.activeSelf) { _bossGo.SetActive(on); _bossPhase = -1; _up10 = -2; }
+            if (on)
+            {
+                int ph = Mathf.Clamp(a.Phase, 1, 4);
+                float up = a.UplinkRemaining;
+                int u10 = up >= 0f ? (int)(up * 10f) : -1;
+                if (ph != _bossPhase || u10 != _up10)
+                {
+                    if (ph != _bossPhase && _bossPhase > 0) UIKit.Pop(ref _traceTw, _bossGo.transform, 1.2f, 0.3f);
+                    _bossPhase = ph; _up10 = u10;
+                    if (u10 >= 0) _bossL.S("AUDITOR · UPLINK ").I(u10 / 10).C('.').I(u10 % 10).C('s').Done();
+                    else _bossText.SetText(BossLabels[ph - 1]);
+                    _bossText.color = u10 >= 0 && up < 5f ? UIKit.Danger : UIKit.Paper;
+                    _bossFill.fillAmount = u10 >= 0 ? up / Desync.Enemies.Auditor.UplinkTime : ph >= 4 ? 0f : 1f - (ph - 1) / 3f;
+                }
+            }
+            if (_trkT <= 0f) return;
+            _trkT -= dt;
+            if (_trkT <= 0f) { _trk.gameObject.SetActive(false); return; }
+            var cam = PlayerRef.Cam;
+            var local = cam ? cam.transform.InverseTransformPoint(_trkPos) : Vector3.forward;
+            float ang = Mathf.Atan2(local.x, local.z);   // 0 = straight ahead (arrow up)
+            _trkRt.anchoredPosition = new Vector2(Mathf.Sin(ang), Mathf.Cos(ang)) * 320f;
+            _trkRt.localRotation = Quaternion.Euler(0f, 0f, -ang * Mathf.Rad2Deg);
+            _trk.alpha = !UIKit.Flashes || ((int)(_trkT * 8f) & 1) == 0 ? 1f : 0.35f;
+        }
+
+        /// Enemies.EnemyEvents.TrackerSpawned: a Tracker ICE left its nest. Pop + an edge arrow toward it for 1.6 s.
+        public void OnTrackerSpawned(Vector3 pos)
+        {
+            _trkPos = pos; _trkT = 1.6f; _trk.gameObject.SetActive(true);
+            ShowPop("TRACKER ICE", UIKit.Danger);
         }
 
         void BuildControlCard()
@@ -380,7 +536,7 @@ namespace Desync.UI
             p.On = true; p.Age = 0f; p.Off = 0f; p.TargetOff = 0f;
             p.Rt.gameObject.SetActive(true); p.G.alpha = 1f;
             int ti = (int)s.type;
-            p.Pts.SetText("+{0:0}", s.points);
+            p.PtsL.C('+').I(s.points).Done();
             p.Label.SetText(!string.IsNullOrEmpty(s.label) ? s.label : ti >= 0 && ti < EventLabels.Length ? EventLabels[ti] : "");
             var c = PopColor(s.type); p.Pts.color = c;
             p.Rt.localScale = Vector3.one * 1.25f;
@@ -472,13 +628,15 @@ namespace Desync.UI
 
             // room / time / terminals / traces
             int ri = GameState.RoomIndex;
-            if (ri != _ri)
+            if (ri != _ri || !ReferenceEquals(RunState.NodeId, _nodeShown))
             {
-                _ri = ri; _cs = -1;
-                _room.SetText(ri >= 0 && ri < _roomCodes.Length ? _roomCodes[ri] : "R-- · ---");
+                _ri = ri; _cs = -1; _nodeShown = RunState.NodeId;
+                var node = RunView.Active ? RunView.Node(_nodeShown) : null;   // BREACH rooms are named by their node
+                _nodeNum = node != null ? node.index + 1 : 0;
+                _room.SetText(node != null ? RunView.NodeLabel(node) : ri >= 0 && ri < _roomCodes.Length ? _roomCodes[ri] : "R-- · ---");
             }
             float t = RoomClock.Time; int cs = (int)(t * 100f + 0.001f);
-            if (cs != _cs) { _cs = cs; UIKit.Clock(t, _clock); _timer.SetText(_clock, 0, 8); }
+            if (cs != _cs) { _cs = cs; UIKit.Clock(t, _clock); _timerL.A(_clock, 8).Done(); }
             TickMedals(t);
             TickScore(dt);
             int td = GameState.TerminalsDone, tt = GameState.TerminalsTotal;
@@ -491,6 +649,8 @@ namespace Desync.UI
             int tc = Mathf.Clamp(GameState.TraceCount, 0, _traceMax);
             if (tc != _tc) { _tc = tc; _traces.SetText(_pipStr[tc]); _tracePips.SetText(_bannerPips[tc]); }
 
+            TickRun();
+            TickBoss(dt);
             TickTrace(dt);
             TickMelt(dt);
             TickCountdowns(dt, cfg);
@@ -528,13 +688,13 @@ namespace Desync.UI
         void TickScore(float dt)
         {
             int score = GameState.Score;
-            if (score != _scoreShown) { _scoreShown = score; _score.SetText("{0:0}", score); }
+            if (score != _scoreShown) { _scoreShown = score; _scoreL.I(score).Done(); }
             float mult = GameState.Multiplier;
             int m100 = Mathf.RoundToInt(mult * 100f);
             if (m100 != _mult100)
             {
                 bool first = _mult100 < 0; _mult100 = m100;
-                _mult.SetText("x{0:0.00}", mult);
+                _multL.C('x').I(m100 / 100).C('.').I(m100 % 100, 2).Done();
                 _mult.color = mult >= 3f ? UIKit.Magenta : mult >= 2f ? UIKit.Green : mult > 1.001f ? UIKit.Cyan : UIKit.Dim;
                 if (!first) _multPulse = MultPulse;   // +12 % for 120 ms
             }
@@ -548,7 +708,7 @@ namespace Desync.UI
             {
                 _chain = chain;
                 _ghost.gameObject.SetActive(chain > 0);
-                if (chain > 0) { _ghost.SetText("GHOST x{0:0}", chain); _ghost.color = chain >= 5 ? UIKit.Magenta : chain >= 3 ? UIKit.Green : UIKit.Cyan; }
+                if (chain > 0) { _ghostL.S("GHOST x").I(chain).Done(); _ghost.color = chain >= 5 ? UIKit.Magenta : chain >= 3 ? UIKit.Green : UIKit.Cyan; }
             }
             for (int i = 0; i < _spops.Length; i++)
             {
@@ -575,7 +735,7 @@ namespace Desync.UI
             if (on)
             {
                 int r10 = (int)(Mathf.Max(0f, GameState.TraceRemaining) * 10f);
-                if (r10 != _trLast) { _trLast = r10; _traceText.SetText("{0:0}.{1:0}s", r10 / 10, r10 % 10); }
+                if (r10 != _trLast) { _trLast = r10; _traceL.I(r10 / 10).C('.').I(r10 % 10).C('s').Done(); }
                 _traceGroup.alpha = UIKit.Flashes ? 0.8f + 0.2f * Mathf.Sin(Time.unscaledTime * 16f) : 1f;
             }
             float target = on ? (UIKit.Flashes ? 0.34f + 0.2f * Mathf.Sin(Time.unscaledTime * 9f) : 0.32f) : 0f;
@@ -593,7 +753,7 @@ namespace Desync.UI
             int mi = (int)(melt + 0.5f);
             if (mi != _mi)
             {
-                _mi = mi; _melt.SetText("MELT {0:0}%", mi); _meltFill.fillAmount = melt / 100f;
+                _mi = mi; _meltL.S("MELT ").I(mi).C('%').Done(); _meltFill.fillAmount = melt / 100f;
                 var c = melt >= cfg.meltWarn ? UIKit.Danger : Color.Lerp(UIKit.Cyan, UIKit.Magenta, Mathf.Clamp01(melt / Mathf.Max(1f, cfg.meltWarn)));
                 _melt.color = c; _meltFill.color = c;
             }
@@ -635,7 +795,7 @@ namespace Desync.UI
                 int g10 = (int)(g * 10f);
                 if (g10 != _g10)
                 {
-                    _g10 = g10; _glitchNum.SetText("{0:0}.{1:0}", g10 / 10, g10 % 10);
+                    _g10 = g10; _glitchL.I(g10 / 10).C('.').I(g10 % 10).Done();
                     _glitchNum.color = g < 1f ? UIKit.Danger : UIKit.Magenta;
                     if (g10 / 10 != _gInt) { _gInt = g10 / 10; UIKit.Pop(ref _glitchTw, _glitchNumRt, 1.3f, 0.3f); }
                 }
@@ -649,7 +809,7 @@ namespace Desync.UI
                 int ls = Mathf.CeilToInt(lc);
                 if (ls != _ls)
                 {
-                    _ls = ls; _lock.SetText("LOCKDOWN  {0:0}s", ls);
+                    _ls = ls; _lockL.S("LOCKDOWN  ").I(ls).C('s').Done();
                     _lock.color = ls <= 20 ? UIKit.Danger : UIKit.Paper;
                     if (ls <= 10) UIKit.Pop(ref _lockTw, _lockRt, 1.2f, 0.25f);
                 }
@@ -661,7 +821,7 @@ namespace Desync.UI
             {
                 _hjT = Mathf.Max(0f, _hjT - Time.deltaTime);
                 int h10 = (int)(_hjT * 10f);
-                if (h10 != _h10) { _h10 = h10; _hjText.SetText("HIJACK  {0:0}.{1:0}s", h10 / 10, h10 % 10); _hjFill.fillAmount = _hjT / Mathf.Max(0.1f, cfg.hijackDuration); }
+                if (h10 != _h10) { _h10 = h10; _hjL.S("HIJACK  ").I(h10 / 10).C('.').I(h10 % 10).C('s').Done(); _hjFill.fillAmount = _hjT / Mathf.Max(0.1f, cfg.hijackDuration); }
             }
             int dg = (GameState.DemoMode ? 1 : 0) | (GameState.God ? 2 : 0);   // F9 demo mode / debug god mode
             if (dg != _dg) { _dg = dg; _demo.SetActive(dg != 0); _demoText.SetText(dg == 1 ? "DEMO MODE · TRACE-FREE" : dg == 2 ? "GOD MODE" : "DEMO · GOD MODE"); }

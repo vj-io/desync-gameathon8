@@ -1,6 +1,19 @@
 {
   "name": "Desync.UI",
   "rootNamespace": "Desync.UI",
-  "references": ["Desync.Core","Desync.Rules","Desync.Net","Unity.TextMeshPro","Unity.InputSystem","PrimeTween.Runtime","UnityEngine.UI"],
-  "autoReferenced": true
+  "references": [
+    "Desync.Core",
+    "Desync.Rules",
+    "Desync.Net",
+    "Unity.TextMeshPro",
+    "Unity.InputSystem",
+    "PrimeTween.Runtime",
+    "UnityEngine.UI",
+    "Desync.Flow",
+    "Desync.Content",
+    "Desync.Gen",
+    "Desync.Enemies"
+  ],
+  "autoReferenced": true,
+  "allowUnsafeCode": true
 }

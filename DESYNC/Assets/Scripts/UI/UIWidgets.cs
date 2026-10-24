@@ -34,6 +34,7 @@ namespace Desync.UI
     public sealed class UIButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler
     {
         public Action Clicked;
+        public Action Hovered;   // pointer entered: menus move their keyboard focus here
         public Image Fill, Frame;
         public TMP_Text Label;
         public Color Base = UIKit.Cyan;
@@ -66,7 +67,7 @@ namespace Desync.UI
             Fill.color = Selected ? new Color(Base.r, Base.g, Base.b, 0.95f) : (hover ? new Color(c.r, c.g, c.b, 0.22f) : new Color(UIKit.Ink.r, UIKit.Ink.g, UIKit.Ink.b, 0.85f));
         }
 
-        public void OnPointerEnter(PointerEventData e) { Paint(true); UIKit.Kill(ref _tw); _tw = Tween.Scale(transform, 1.06f, 0.14f, Ease.OutBack, useUnscaledTime: true); }
+        public void OnPointerEnter(PointerEventData e) { Hovered?.Invoke(); Paint(true); UIKit.Kill(ref _tw); _tw = Tween.Scale(transform, 1.06f, 0.14f, Ease.OutBack, useUnscaledTime: true); }
         public void OnPointerExit(PointerEventData e) { Paint(false); UIKit.Kill(ref _tw); _tw = Tween.Scale(transform, 1f, 0.12f, Ease.OutQuad, useUnscaledTime: true); }
 
         public void OnPointerDown(PointerEventData e)

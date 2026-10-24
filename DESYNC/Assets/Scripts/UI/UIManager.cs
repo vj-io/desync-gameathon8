@@ -1,4 +1,5 @@
 using System;
+using Desync.Flow;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -8,7 +9,8 @@ using UnityEngine.UI;
 namespace Desync.UI
 {
     /// Self-bootstrapping persistent UI root (CONTRACT pattern). Builds one overlay Canvas in code, owns the screens and
-    /// routes GameEvents to them. UI never references Flow: it raises Start/Resume/Restart/Quit/SettingsChanged requests.
+    /// routes GameEvents to them. UI raises Start/Resume/Restart/Quit/SettingsChanged requests; for BREACH runs it reads
+    /// Flow's RunState and raises RunEvents (the run contract), never calling Flow code directly.
     public sealed class UIManager : MonoBehaviour
     {
         public enum Mode { None, Title, Room, Ending }
@@ -21,7 +23,8 @@ namespace Desync.UI
         EventSystem _es;
         TitleScreen _title; HudScreen _hud; PauseScreen _pause; LevelSelectScreen _levels; ResultsScreen _results; RecapScreen _recap; GoalsOverlay _goals;
         FinaleScreen _finale; EndingScreen _ending;
-        bool _built;
+        RunMapScreen _map; DraftScreen _draft; MarketScreen _market; CooldownScreen _cooldown; RunResultsScreen _runResults;
+        bool _built, _mapTab;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Bootstrap()
@@ -70,12 +73,18 @@ namespace Desync.UI
             _goals = Make<GoalsOverlay>("Goals");
             _finale = Make<FinaleScreen>("Finale");
             _results = Make<ResultsScreen>("Results");   // above the finale: room 6 reports at the finale's end
+            _draft = Make<DraftScreen>("Draft");
+            _market = Make<MarketScreen>("Market");
+            _cooldown = Make<CooldownScreen>("Cooldown");
+            _map = Make<RunMapScreen>("RunMap");
+            _runResults = Make<RunResultsScreen>("RunResults");
             _pause = Make<PauseScreen>("Pause");
             _levels = Make<LevelSelectScreen>("LevelSelect");
 
             var sfx = gameObject.AddComponent<AudioSource>();   // UI-local: results tally ticks (pitch per line)
             sfx.playOnAwake = false; sfx.spatialBlend = 0f; sfx.ignoreListenerPause = true;
             _results.Init(sfx);
+            _draft.Init(sfx);
         }
 
         void EnsureEventSystem()
@@ -124,7 +133,14 @@ namespace Desync.UI
             if (m == Mode.Ending) _ending.Show(); else _ending.Hide();
             if (m == Mode.Room) _hud.Show(); else _hud.Hide();
             if (m != Mode.Room) { _pause.Hide(); _results.Hide(); _recap.Hide(); _goals.Hide(); _finale.Hide(); }
+            if (m == Mode.Title || m == Mode.Ending) HideRun(true);
             _levels.Hide();
+        }
+
+        void HideRun(bool all)
+        {
+            _map.Hide(); _draft.Hide(); _market.Hide(); _cooldown.Hide(); _mapTab = false;
+            if (all) _runResults.Hide();
         }
 
         void OnSceneLoaded(Scene s, LoadSceneMode mode)
@@ -159,6 +175,10 @@ namespace Desync.UI
             GameEvents.RoomReset += OnRoomReset;
             GameEvents.Hijacked += _hud.OnHijacked;
             GameEvents.PopText += _hud.ShowPop;
+            RunEvents.PhaseChanged += OnRunPhase;
+            RunEvents.RunEnded += OnRunEnded;
+            RunEvents.StartRun += OnRunStart;
+            Desync.Enemies.EnemyEvents.TrackerSpawned += _hud.OnTrackerSpawned;
         }
 
         void OnDisable()
@@ -184,6 +204,10 @@ namespace Desync.UI
             GameEvents.RoomReset -= OnRoomReset;
             GameEvents.Hijacked -= _hud.OnHijacked;
             GameEvents.PopText -= _hud.ShowPop;
+            RunEvents.PhaseChanged -= OnRunPhase;
+            RunEvents.RunEnded -= OnRunEnded;
+            RunEvents.StartRun -= OnRunStart;
+            Desync.Enemies.EnemyEvents.TrackerSpawned -= _hud.OnTrackerSpawned;
         }
 
         void OnStartRequested(int room) { _levels.Hide(); }
@@ -201,6 +225,7 @@ namespace Desync.UI
         void OnRoomStarted(int room)
         {
             SetMode(Mode.Room);
+            if (!_hud.IsOn) _hud.Show();   // a BREACH node screen may have hidden it
             _results.Hide(); _recap.Hide(); _finale.Hide(); _levels.Hide();
             if (!GameState.Paused) _pause.Hide();
             _hud.OnRoomStarted(room);
@@ -216,6 +241,36 @@ namespace Desync.UI
 
         void OnRoomReset() { _recap.Hide(); _hud.OnRoomReset(); }
 
+        // ------------------------------------------------------------------ BREACH run (RunState / RunEvents)
+        void OnRunStart(RunMode m) { RunView.ResetRun(); HideRun(true); }
+
+        /// Map / Draft / Market / Cooldown are full screens between rooms; Room hands back to the HUD; Over shows the run results.
+        void OnRunPhase(RunPhase p)
+        {
+            RunView.TrackNode();
+            UIPanel same = p == RunPhase.Draft ? _draft : p == RunPhase.Market ? (UIPanel)_market : p == RunPhase.Cooldown ? _cooldown : null;
+            if (same != null && same.IsOn) return;   // the run re-raises a phase after a reroll / purchase: the screen repaints itself
+            bool between = p == RunPhase.Map || p == RunPhase.Draft || p == RunPhase.Market || p == RunPhase.Cooldown;
+            if (between) { _results.Hide(); _recap.Hide(); _goals.Hide(); _hud.Hide(); }
+            else if (p == RunPhase.Room && Current == Mode.Room && !_hud.IsOn) _hud.Show();
+            HideRun(p == RunPhase.Room);
+            switch (p)
+            {
+                case RunPhase.Map: _map.Show(true); break;
+                case RunPhase.Draft: _draft.Show(); break;
+                case RunPhase.Market: _market.Show(); break;
+                case RunPhase.Cooldown: _cooldown.Show(); break;
+                case RunPhase.Over: OnRunEnded(); break;
+            }
+        }
+
+        void OnRunEnded()
+        {
+            if (_runResults.IsOn) return;
+            HideRun(false); _results.Hide(); _recap.Hide(); _goals.Hide();
+            _runResults.Show();
+        }
+
         // ------------------------------------------------------------------ frame
         void Update() { TickAll(Time.unscaledDeltaTime); }
 
@@ -227,8 +282,10 @@ namespace Desync.UI
                 case Mode.Room:
                     if (GameState.Paused && !_pause.IsOn && !_levels.IsOn) OnPaused(true);   // missed the event / level select just closed
                     _hud.Tick(dt);
-                    bool goals = UIKit.GoalsKey.IsPressed() && !GameState.Paused && !_results.IsOn && !_recap.IsOn;   // TAB (hold)
+                    bool tab = UIKit.GoalsKey.IsPressed() && !GameState.Paused && !_results.IsOn && !_recap.IsOn;   // TAB (hold)
+                    bool breach = RunView.Active, goals = tab && !breach, map = tab && breach && RunState.Phase == RunPhase.Room;   // BREACH: TAB = run map
                     if (goals != _goals.IsOn) { if (goals) _goals.Show(); else _goals.Hide(); }
+                    if (map != _mapTab) { _mapTab = map; if (map) _map.Show(false); else _map.Hide(); }
                     break;
                 case Mode.Ending: _ending.Tick(dt); break;
             }
@@ -237,6 +294,11 @@ namespace Desync.UI
             if (_results.IsOn) _results.Tick(dt);
             if (_finale.IsOn) _finale.Tick(dt);
             if (_levels.IsOn) _levels.Tick(dt);
+            if (_map.IsOn) _map.Tick(dt);
+            if (_draft.IsOn) _draft.Tick(dt);
+            if (_market.IsOn) _market.Tick(dt);
+            if (_cooldown.IsOn) _cooldown.Tick(dt);
+            if (_runResults.IsOn) _runResults.Tick(dt);
         }
     }
 }

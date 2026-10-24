@@ -9,6 +9,45 @@ namespace Desync.UI
 {
     public enum Anc { TL, T, TR, L, C, R, BL, B, BR }
 
+    /// Per-frame numbers with no garbage, Editor included. TMP's format / char[] SetText overloads build a string on every call
+    /// in the Editor (it syncs its inspector text under UNITY_EDITOR), so the Editor GC checks saw the HUD allocate although
+    /// builds never do. LiveText composes into a buffer, copies it into one string per length that this label owns (allocated
+    /// once, rewritten in place) and hands that to SetText(string), which keeps the reference: no allocation anywhere.
+    /// Usage: label.S("MELT ").I(melt).C('%').Done();
+    public sealed class LiveText
+    {
+        readonly TMP_Text _t;
+        readonly string[] _byLen = new string[33];
+        readonly char[] _buf = new char[32];
+        int _n;
+
+        public LiveText(TMP_Text t) { _t = t; }
+
+        public LiveText C(char c) { if (_n < _buf.Length) _buf[_n++] = c; return this; }
+        public LiveText S(string s) { for (int i = 0; i < s.Length; i++) C(s[i]); return this; }
+        public LiveText A(char[] src, int n) { for (int i = 0; i < n; i++) C(src[i]); return this; }
+
+        /// `v` in decimal, zero-padded to `digits`.
+        public LiveText I(int v, int digits = 1)
+        {
+            if (v < 0) { C('-'); v = -v; }
+            int start = _n, d = 0;
+            do { C((char)('0' + v % 10)); v /= 10; d++; } while (v > 0 || d < digits);
+            for (int i = start, j = _n - 1; i < j; i++, j--) { char x = _buf[i]; _buf[i] = _buf[j]; _buf[j] = x; }
+            return this;
+        }
+
+        public unsafe void Done()
+        {
+            int n = _n; _n = 0;
+            if (n == 0) { _t.SetText(string.Empty); return; }
+            var s = _byLen[n];
+            if (s == null) _byLen[n] = s = new string(' ', n);   // a fresh string (never interned) this label may rewrite
+            fixed (char* p = s) for (int i = 0; i < n; i++) p[i] = _buf[i];
+            _t.SetText(s);
+        }
+    }
+
     /// Shared look + tiny builders for the code-built uGUI. All sprites are generated once at runtime (no art assets).
     public static class UIKit
     {
@@ -66,6 +105,43 @@ namespace Desync.UI
                 float d = Mathf.Sqrt(dx * dx + dy * dy);
                 return Mathf.Clamp01((1f - d) * 16f + 0.5f) * Mathf.Clamp01((d - 0.78f) * 16f + 0.5f);
             }));
+            // Rarity borders (drawn Image.Type.Tiled, fillCenter off): [0] solid, [1..4] dashes 6 on / 6 off shifted 3 px per frame,
+            // so cycling 1..4 makes the dashes crawl. 24 px sprite, 3 px line, solid 6 px corners.
+            Borders = new Sprite[5];
+            for (int f = 0; f < 5; f++)
+            {
+                int shift = (f - 1) * 3;
+                Borders[f] = MakeSprite(Tex(24, 24, FilterMode.Point, (x, y) =>
+                {
+                    if (x >= 3 && y >= 3 && x <= 20 && y <= 20) return 0f;   // inside the line
+                    if (f == 0) return 1f;
+                    bool hEdge = x >= 6 && x <= 17, vEdge = y >= 6 && y <= 17;
+                    if (!hEdge && !vEdge) return 1f;                          // corners
+                    int p = (hEdge ? x : y) - 6 + 12 - shift;
+                    return p % 12 < 6 ? 1f : 0f;
+                }), new Vector4(6, 6, 6, 6));
+            }
+        }
+
+        public static Sprite[] Borders;
+
+        /// Rarity border on `im` (spec: rarity by border pattern, never by a new hue): 0 = C solid, 1 = R dashed, 2 = E crawling
+        /// dashes (call AnimateBorder every frame). `thickness` scales the 3 px line.
+        public static void SetBorder(Image im, int rarity, float thickness = 1f)
+        {
+            im.sprite = Borders[rarity == 0 ? 0 : 1];
+            im.type = Image.Type.Tiled; im.fillCenter = false;
+            im.pixelsPerUnitMultiplier = 1f / thickness;
+        }
+
+        /// Crawling dashes for epic borders: 12 steps a second, no allocation.
+        public static void AnimateBorder(Image im) { var s = Borders[1 + (int)(Time.unscaledTime * 12f) % 4]; if (im.sprite != s) im.sprite = s; }
+
+        /// Menus and run screens need a visible, free pointer.
+        public static void FreeCursor()
+        {
+            if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
+            if (!Cursor.visible) Cursor.visible = true;
         }
 
         static Texture2D Tex(int w, int h, FilterMode fm, System.Func<int, int, float> alpha)
@@ -193,6 +269,10 @@ namespace Desync.UI
         public static readonly InputAction AnyKey = new InputAction("UIAny", InputActionType.Button);
         public static readonly InputAction CopyKey = new InputAction("UICopy", InputActionType.Button, "<Keyboard>/c");
         public static readonly InputAction GoalsKey = new InputAction("UIGoals", InputActionType.Button, "<Keyboard>/tab");
+        // Menu navigation (title + run screens): arrows / WASD, pad d-pad / left stick; confirm = Space, Enter, pad South / Start.
+        public static readonly InputAction NavPrev = new InputAction("UIPrev", InputActionType.Button);
+        public static readonly InputAction NavNext = new InputAction("UINext", InputActionType.Button);
+        public static readonly InputAction Confirm = new InputAction("UIConfirm", InputActionType.Button);
 
         static UIKit()
         {
@@ -200,8 +280,19 @@ namespace Desync.UI
                                       "<Gamepad>/buttonNorth", "<Gamepad>/buttonWest", "<Gamepad>/start", "<Gamepad>/select" })
                 AnyKey.AddBinding(b);
             CopyKey.AddBinding("<Gamepad>/buttonNorth");
-            AnyKey.Enable(); CopyKey.Enable(); GoalsKey.Enable();
+            foreach (var b in new[] { "<Keyboard>/upArrow", "<Keyboard>/leftArrow", "<Keyboard>/w", "<Keyboard>/a",
+                                      "<Gamepad>/dpad/up", "<Gamepad>/dpad/left", "<Gamepad>/leftStick/up", "<Gamepad>/leftStick/left" })
+                NavPrev.AddBinding(b);
+            foreach (var b in new[] { "<Keyboard>/downArrow", "<Keyboard>/rightArrow", "<Keyboard>/s", "<Keyboard>/d",
+                                      "<Gamepad>/dpad/down", "<Gamepad>/dpad/right", "<Gamepad>/leftStick/down", "<Gamepad>/leftStick/right" })
+                NavNext.AddBinding(b);
+            foreach (var b in new[] { "<Keyboard>/space", "<Keyboard>/enter", "<Keyboard>/numpadEnter", "<Gamepad>/buttonSouth", "<Gamepad>/start" })
+                Confirm.AddBinding(b);
+            AnyKey.Enable(); CopyKey.Enable(); GoalsKey.Enable(); NavPrev.Enable(); NavNext.Enable(); Confirm.Enable();
         }
+
+        /// -1 / +1 when a menu step was pressed this frame, else 0.
+        public static int NavStep => NavPrev.WasPressedThisFrame() ? -1 : NavNext.WasPressedThisFrame() ? 1 : 0;
 
         // ---------------------------------------------------------------- time
         /// Writes "mm:ss.cc" (8 chars, clamped to 99:59.99) into buf. No allocation: pair with TMP_Text.SetText(buf, 0, 8).

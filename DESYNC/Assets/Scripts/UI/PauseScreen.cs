@@ -29,7 +29,7 @@ namespace Desync.UI
             // ---- controls (left)
             var ch = UIKit.Text(panel.transform, "ControlsHead", UIKit.Title, 28, cyan, TextAlignmentOptions.Left, "CONTROLS"); ch.fontStyle = FontStyles.Bold; ch.characterSpacing = 6f;
             UIKit.Place(ch.rectTransform, Anc.T, new Vector2(-300, -212), new Vector2(480, 40));
-            string[,] k = { { "WASD", "MOVE" }, { "MOUSE", "LOOK" }, { "SPACE", "FLIP LAYER" }, { "E", "HACK" }, { "← ↑ → ↓", "ENTER CODE" }, { "R", "RESTART ROOM" }, { "ESC", "PAUSE" }, { "TAB", "GOALS (HOLD)" } };
+            string[,] k = { { "WASD", "MOVE" }, { "MOUSE", "LOOK" }, { "SPACE", "FLIP LAYER" }, { "E", "HACK" }, { "← ↑ → ↓", "ENTER CODE" }, { "R", "RESTART ROOM" }, { "ESC", "PAUSE" }, { "TAB", "MAP / GOALS (HOLD)" } };
             for (int i = 0; i < k.GetLength(0); i++)
             {
                 float y = -268 - i * 50;

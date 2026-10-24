@@ -119,6 +119,7 @@ namespace Desync.Net
         public static void OnReport(RoomReport r)
         {
             if (r == null) return;
+            if (r.room < 0) { Analytics.Track("room_end", ("room", "generated"), ("time", r.time), ("score", r.total), ("grade", r.grade.ToString())); return; }   // generated BREACH rooms have no classic best record
             string id = RoomId(r.room);
             SaveService.RecordRoom(r, id);
             Analytics.Track("room_end", ("room", id), ("time", r.time), ("score", r.total), ("grade", r.grade.ToString()), ("medal", r.medal.ToString()));

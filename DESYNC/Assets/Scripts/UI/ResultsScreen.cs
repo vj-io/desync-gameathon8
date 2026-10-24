@@ -1,7 +1,10 @@
 using System.Globalization;
+using Desync.Flow;
+using Desync.Gen;
 using PrimeTween;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Desync.UI
@@ -10,9 +13,11 @@ namespace Desync.UI
     /// 250 ms each (tick pitch +1 semitone per line), MEDAL reveals, the GRADE stamps (80 ms hit-stop), then best/delta and
     /// NEXT TARGET. The whole tally is 2.6 s. Any key jumps to the end state; the next press acts:
     /// [R] RestartRequested, [SPACE] ContinueRequested, [C] CopyRequested(shareText). Time-driven: Apply(t) is idempotent.
+    /// In a BREACH run there is no retry (the run owns deaths); after a boss [1] cashes out (RunEvents.CashOut) and SPACE goes
+    /// deeper, or finishes the run after the final act.
     public sealed class ResultsScreen : UIPanel
     {
-        sealed class Row { public RectTransform Rt; public TMP_Text Label, Value; public CanvasGroup G; public float Start; public int Last, Ticks; }
+        sealed class Row { public RectTransform Rt; public TMP_Text Label, Value; public LiveText L; public CanvasGroup G; public float Start; public int Last, Ticks; }
 
         Row[] _rows;
         TMP_Text _head, _sub, _grade, _time, _score, _next, _skip, _copyLabel;
@@ -20,6 +25,9 @@ namespace Desync.UI
         RoomReport _r; string _medalText;
         float _t, _copiedT; bool _acted, _stamped; int _skipFrame = -1;
         AudioSource _sfx; AudioClip _click, _popClip;
+        UIButton _retry, _continue;
+        int _run;   // 0 classic, 1 run room, 2 run boss (cash out | go deeper), 3 final boss (finish)
+        internal int RunKind => _run;
 
         internal const float RowStart = 0.25f, RowGap = 0.32f, Count = 0.25f, Stamp = 1.95f, FootAt = 2.25f, End = 2.6f, InputGuard = 0.3f, HitStop = 0.08f;
         const int Lines = 5;   // EVENTS, COMBO PEAK, TIME BONUS, TOTAL, MEDAL (the GRADE stamp is the 6th beat)
@@ -55,6 +63,7 @@ namespace Desync.UI
                 UIKit.Stretch(row.Label.rectTransform);
                 row.Value = UIKit.Text(rt, "Value", total ? UIKit.Title : UIKit.Hud, total ? 54 : 42, paper, TextAlignmentOptions.Right); row.Value.fontStyle = FontStyles.Bold;
                 UIKit.Stretch(row.Value.rectTransform);
+                row.L = new LiveText(row.Value);
                 _rows[i] = row;
             }
             var sep = UIKit.Img(panel.transform, "Rule", new Color(cyan.r, cyan.g, cyan.b, 0.5f)); UIKit.Place(sep.rectTransform, Anc.TL, new Vector2(70, -356), new Vector2(640, 2));
@@ -75,8 +84,8 @@ namespace Desync.UI
             UIKit.Place(_next.rectTransform, Anc.TL, new Vector2(0, -92), new Vector2(1100, 40));
 
             // keys
-            UIButton.Create(panel.transform, "ResultsRetry", "[R] RETRY", Anc.B, new Vector2(-390, 40), new Vector2(340, 80), 32, UIKit.Magenta, () => Button(0), UIKit.Hud);
-            UIButton.Create(panel.transform, "ResultsContinue", "[SPACE] CONTINUE", Anc.B, new Vector2(0, 40), new Vector2(400, 80), 32, cyan, () => Button(1), UIKit.Hud);
+            _retry = UIButton.Create(panel.transform, "ResultsRetry", "[R] RETRY", Anc.B, new Vector2(-390, 40), new Vector2(340, 80), 32, UIKit.Magenta, () => Button(0), UIKit.Hud);
+            _continue = UIButton.Create(panel.transform, "ResultsContinue", "[SPACE] CONTINUE", Anc.B, new Vector2(0, 40), new Vector2(400, 80), 32, cyan, () => Button(1), UIKit.Hud);
             var copy = UIButton.Create(panel.transform, "ResultsCopy", "[C] COPY", Anc.B, new Vector2(390, 40), new Vector2(340, 80), 32, cyan, () => Button(2), UIKit.Hud);
             _copyLabel = copy.Label;
             _skip = UIKit.Text(panel.transform, "Skip", UIKit.Hud, 22, dim, TextAlignmentOptions.Center, "ANY KEY SKIPS"); _skip.characterSpacing = 8f;
@@ -92,7 +101,13 @@ namespace Desync.UI
             var cfg = GameConfig.I; var inv = CultureInfo.InvariantCulture;
             int ri = Mathf.Clamp(r.room, 0, 5);
             string name = cfg.roomNames != null && ri < cfg.roomNames.Length ? cfg.roomNames[ri].ToUpperInvariant() : "";
-            _head.SetText("R" + (ri + 1).ToString("00") + " · " + name + " CLEARED");
+            var node = RunView.Active ? RunView.Node(RunState.NodeId) : null;
+            _run = node == null ? 0 : node.type != NodeType.Boss ? 1 : RunView.FinalAct ? 3 : 2;
+            _head.SetText(node != null ? RunView.NodeLabel(node) + (node.type == NodeType.Boss ? " DOWN" : " CLEARED") : "R" + (ri + 1).ToString("00") + " · " + name + " CLEARED");
+            _retry.gameObject.SetActive(_run == 0 || _run == 2);
+            _retry.Label.SetText(_run == 2 ? "[1] CASH OUT" : "[R] RETRY");
+            _retry.Base = _run == 2 ? UIKit.MedalColor(3) : UIKit.Magenta; _retry.SetSelected(false);
+            _continue.Label.SetText(_run == 2 ? "[SPACE] GO DEEPER" : _run == 3 ? "[SPACE] FINISH RUN" : "[SPACE] CONTINUE");
             _sub.SetText("TIME " + UIKit.ClockShort(r.time));
             int medal = (int)r.medal;
             _medalText = (medal >= 1 && medal <= 4 ? UIKit.MedalNames[medal] : "NONE");
@@ -142,7 +157,9 @@ namespace Desync.UI
                 Apply(_t, true);
                 return;
             }
-            if (GameInput.Restart.WasPressedThisFrame()) Act(0);
+            var kb = Keyboard.current;
+            if (_run == 0 && GameInput.Restart.WasPressedThisFrame()) Act(0);
+            else if (_run == 2 && kb != null && (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame)) Act(3);
             else if (GameInput.Flip.WasPressedThisFrame()) Act(1);
             else if (UIKit.CopyKey.WasPressedThisFrame()) Act(2);
         }
@@ -160,6 +177,7 @@ namespace Desync.UI
         {
             if (_acted) return;
             if (_t < End || Time.frameCount == _skipFrame) { Skip(); return; }   // the click that skipped must not also act
+            if (kind == 0) { if (_run == 2) kind = 3; else if (_run != 0) return; }   // the left button: retry (classic) or cash out (boss)
             Act(kind);
         }
 
@@ -168,6 +186,7 @@ namespace Desync.UI
             switch (kind)
             {
                 case 0: _acted = true; GameEvents.RestartRequested?.Invoke(); break;
+                case 3: _acted = true; RunEvents.CashOut?.Invoke(); break;
                 case 1: _acted = true; GameEvents.ContinueRequested?.Invoke(); break;
                 default:
                     GameEvents.CopyRequested?.Invoke(_r != null ? _r.shareText : "");
@@ -193,10 +212,10 @@ namespace Desync.UI
                 int v;
                 switch (i)
                 {
-                    case 0: v = Mathf.RoundToInt(r.eventsScore * k); if (v != row.Last) row.Value.SetText("+{0:0}", v); break;
-                    case 1: v = Mathf.RoundToInt((1f + (Mathf.Max(1f, r.peakMultiplier) - 1f) * k) * 100f); if (v != row.Last) row.Value.SetText("x{0:0.00}", v / 100f); break;
-                    case 2: v = Mathf.RoundToInt(r.timeBonus * k); if (v != row.Last) row.Value.SetText("+{0:0}", v); break;
-                    case 3: v = Mathf.RoundToInt(r.total * k); if (v != row.Last) row.Value.SetText("{0:0}", v); break;
+                    case 0: v = Mathf.RoundToInt(r.eventsScore * k); if (v != row.Last) row.L.C('+').I(v).Done(); break;
+                    case 1: v = Mathf.RoundToInt((1f + (Mathf.Max(1f, r.peakMultiplier) - 1f) * k) * 100f); if (v != row.Last) row.L.C('x').I(v / 100).C('.').I(v % 100, 2).Done(); break;
+                    case 2: v = Mathf.RoundToInt(r.timeBonus * k); if (v != row.Last) row.L.C('+').I(v).Done(); break;
+                    case 3: v = Mathf.RoundToInt(r.total * k); if (v != row.Last) row.L.I(v).Done(); break;
                     default: v = 1; if (v != row.Last) row.Value.SetText(_medalText); break;
                 }
                 row.Last = v;
