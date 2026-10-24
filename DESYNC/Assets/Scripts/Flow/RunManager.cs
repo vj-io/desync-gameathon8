@@ -224,20 +224,24 @@ namespace Desync.Flow
                 DeepRun.Level = level;
                 DeepRun.Picks.AddRange(DeepRules.Canonical(picks));
             }
-            runPool = draftPool;
+            var open = Unlocks.Pool(draftPool, mode);   // the exploits the unlock tree has opened (everything in a shared-seed mode)
+            runPool = open;
             if (DeepRun.Level > 0)
             {
                 runPool = new Catalog { mutators = draftPool.mutators };
-                foreach (var e in draftPool.exploits) if (!DeepRules.Excludes(DeepRun.Picks, catalog, e.id)) runPool.exploits.Add(e);
+                foreach (var e in open.exploits) if (!DeepRules.Excludes(DeepRun.Picks, catalog, e.id)) runPool.exploits.Add(e);
             }
             heatPlacement = DeepRules.Placement(DeepRun.Picks, catalog);
             RunState.Seed = seed;
             RunState.Graph = Generator.GenerateRun(seed, DeepRun.Level);
+            Unlocks.GateGraph(RunState.Graph, mode, DeepRun.Level);   // Black Market nodes play as Infiltration rooms until the access is bought
             RunState.Act = 1;
             RunState.Backups = RunRules.StartBackups;
+            Unlocks.GrantStarter(RunState.Held, catalog, mode);   // the equipped archetype starter
             SaveService.Data.stats.runs++;
             SaveService.Save();
             StartCoroutine(EnsureStage());
+            if (mode == RunMode.Overclock) { PlayNode(OverclockRun.First(seed)); return; }   // Endless Overclock: no map, rooms back to back
             SetPhase(RunPhase.Map);
         }
 
@@ -252,7 +256,7 @@ namespace Desync.Flow
 
         void OnClassicStart(int room) => Abandon();   // level select / play again mid-run
 
-        bool FinalAct => RunState.Act >= (RunState.Mode == RunMode.Quick ? 1 : RunRules.CampaignActs);
+        bool FinalAct => RunState.Act >= (RunState.Mode == RunMode.Quick || RunState.Mode == RunMode.Daily ? 1 : RunRules.CampaignActs);   // Daily Breach: act 1
 
         void EndRun(bool won, bool died, bool announce = true)
         {
@@ -265,6 +269,7 @@ namespace Desync.Flow
             save.fragments += bank;
             if (won) save.stats.wins++;
             if (won && DeepRun.Level > 0) RunUnlocks.RecordDeepWin(save, DeepRun.Level);
+            if (RunState.Mode == RunMode.Overclock) OverclockRun.RecordBest(save, RunState.Grades.Count, RunState.RunScore);
             SaveService.Save();
             Cursor.lockState = CursorLockMode.None;
             SetPhase(announce ? RunPhase.Over : RunPhase.None);
@@ -300,6 +305,7 @@ namespace Desync.Flow
             CurrentBoss = null;
             DeepRun.Level = 0;
             DeepRun.Picks.Clear();
+            DeepRun.Rewards.Clear();
             heatPlacement = default;
             deadline = -1f;
             grazeSurge = ghostCacheHits = 0;
@@ -369,6 +375,18 @@ namespace Desync.Flow
             }
         }
 
+        /// Endless Overclock: plays `n` straight away (no map choice); its act becomes the run's.
+        void PlayNode(RunNode n)
+        {
+            node = n;
+            RunState.NodeId = n.id;
+            RunState.Act = n.act;
+            RunState.RoomMutators.Clear();
+            Cursor.lockState = CursorLockMode.Locked;
+            SetPhase(RunPhase.Room);
+            StartCoroutine(EnterRoom(token));
+        }
+
         // ---------- rooms ----------
 
         IEnumerator EnsureStage()
@@ -405,13 +423,16 @@ namespace Desync.Flow
         /// Mutators, room spec, Modifiers + flags (D-013), player perks and the starting melt for the chosen node.
         void PrepareRoom()
         {
-            RunState.RoomMutators.AddRange(RunRules.RoomMutators(Rng.Substream(node.roomSeed, "mutators"), catalog, node));
+            RunState.RoomMutators.AddRange(RunState.Mode == RunMode.Daily && node.type != NodeType.Boss
+                ? DailyRun.Mutators(RunState.Seed, catalog)   // Daily Breach: the day's fixed pair in every room
+                : RunRules.RoomMutators(Rng.Substream(node.roomSeed, "mutators"), catalog, node));
             bool mirror = RunState.RoomMutators.Exists(m => m.id == "mirror");
             bossArena = node.type == NodeType.Boss ? RunBosses.For(node) : null;
-            spec = bossArena != null ? bossArena.spec : RunRules.Room(node, mirror, chunks, DeepRun.Level, heatPlacement);
+            spec = bossArena != null ? bossArena.spec : RunRules.Room(node, mirror, chunks, DeepRun.Level + OverclockRun.Heat, heatPlacement);
             // held exploits + room mutators + Deep Layer picks; flags gain "mut:<id>" and the DL >= 6 boss heat flag
             built = DeepRules.Build(RunState.Held, RunState.RoomMutators, DeepRun.Level, DeepRun.Picks, catalog, RunState.Mode == RunMode.Daily ? "daily" : null);
             built.mods.GrazeCapBonus += grazeSurge;   // Redline Surge, earned in the previous room
+            built.mods.ScoreMult += OverclockRun.ScoreBonus;   // Endless Overclock: grows per room (0 elsewhere)
             grazeSurge = 0;
             GameState.Flags.Clear();
             foreach (var f in built.flags) GameState.Flags.Add(f);
@@ -487,12 +508,15 @@ namespace Desync.Flow
             RunState.Fragments += RunRules.RoomFragments(r.medal, r.grade);
             RunState.Cycles += RunRules.RoomCycles(r.grade, node.type == NodeType.Elite);
             RunState.MeltCarry = GameState.Melt * DeepRules.CarryShare(DeepRun.Picks, catalog, RunRules.MeltCarryShare);   // Persistent Melt: 100 %
+            if (RunState.Mode == RunMode.Overclock) RunState.MeltCarry = GameState.Melt;   // Endless Overclock: melt carries over in full
             bestChain = Math.Max(bestChain, chain);
             if (PerkBinder.GhostCache && chain >= 10 && RunRules.GhostCacheReroll(++ghostCacheHits, DeepRules.Has(DeepRun.Picks, "fewer_choices")))
                 RunState.Rerolls++;   // Ghost Cache: exit a room with a chain >= 10
             grazeSurge = GameState.Flags.Contains("flag:redline_surge") && ScoreKeeper.I ? ScoreKeeper.I.Redlines : 0;
             if (node.type == NodeType.Boss && RunUnlocks.RecordKill(SaveService.Data, node.act)) SaveService.Save();   // first kill: act / Deep Layer unlocks
             SetPhase(RunPhase.Results);
+            var daily = DailyRun.RoomCleared(r);   // Daily / Weekly Ladder: the room's log for the leaderboard; Daily: its share block
+            if (daily != null) return daily;
             var g = new StringBuilder(RunState.Grades.Count * 2);
             foreach (var c in RunState.Grades) { if (g.Length > 0) g.Append(' '); g.Append(c); }
             return RoomReports.ShareText(DateTime.UtcNow, g.ToString(), RunState.RunTime, bestChain);
@@ -502,6 +526,7 @@ namespace Desync.Flow
         internal void ContinueFromResults()
         {
             if (RunState.Phase != RunPhase.Results) return;
+            if (RunState.Mode == RunMode.Overclock) { TearDownRoom(); PlayNode(OverclockRun.Next(RunState.Seed)); return; }   // no draft: the next room
             if (node.type != NodeType.Boss) { TearDownRoom(); StartCoroutine(EnsureStage()); OpenDraft(node.type == NodeType.Elite); }
             else if (FinalAct) EndRun(true, false);
             else Deeper();

@@ -68,6 +68,7 @@ namespace Desync.UI
         CanvasGroup _cardGroup; RectTransform[] _chips; float _cardT; int _cardState; Tween _cardFade;
         // ---- BREACH run block: held exploits (bottom-right, glow while their condition holds), backups, room mutator chips
         GameObject _runGo; bool _runOn; string _nodeShown; int _nodeNum;
+        TimeAttackRooms.Room _taShown;   // the Time-Attack room the label names
         RectTransform[] _xRt; Image[] _xBorder, _xGlow; CanvasGroup[] _xGroup; TMP_Text[] _xGlyph, _xInit; string[] _xWhen; bool[] _xLit; readonly Exploit[] _xShown = new Exploit[Loadout.MaxHeld]; int _xCount = -1;
         GameObject[] _mGo; TMP_Text[] _mText; readonly Mutator[] _mShown = new Mutator[2]; int _mCount = -1;
         TMP_Text _backups, _deepTag; int _bShown = -1, _dlShown = -1;
@@ -215,8 +216,10 @@ namespace Desync.UI
             // ---- REDLINE callout (SOURCE at melt >= redline threshold: flipping back pays)
             var rl = UIKit.Box(Root, "Redline", danger, 0.72f);
             UIKit.Place(rl.rectTransform, Anc.BL, new Vector2(36, 168), new Vector2(460, 48)); _redGo = rl.gameObject;
-            _red = UIKit.Text(rl.transform, "Label", hud, 30, danger, TextAlignmentOptions.Center, "REDLINE ► FLIP +" + Desync.Rules.Scoring.RedlinePts);
+            _red = UIKit.Text(rl.transform, "Label", hud, 30, danger, TextAlignmentOptions.Center, "REDLINE > FLIP +" + Desync.Rules.Scoring.RedlinePts);   // ASCII: see below
             _red.fontStyle = FontStyles.Bold; _red.characterSpacing = 4f; UIKit.Stretch(_red.rectTransform);
+            // Toggled whenever melt crosses the REDLINE threshold in SOURCE: no glyph from the symbols fallback font here (a "►"
+            // gives the text a fallback sub-mesh, and TextMeshPro allocates on every enable / disable of one).
             _redGo.SetActive(false);
 
             // ---- glitch countdown (big number, upper-centre)
@@ -649,12 +652,13 @@ namespace Desync.UI
 
             // room / time / terminals / traces
             int ri = GameState.RoomIndex;
-            if (ri != _ri || !ReferenceEquals(RunState.NodeId, _nodeShown))
+            var ta = TimeAttack.Current;
+            if (ri != _ri || !ReferenceEquals(RunState.NodeId, _nodeShown) || !ReferenceEquals(ta, _taShown))
             {
-                _ri = ri; _cs = -1; _nodeShown = RunState.NodeId;
-                var node = RunView.Active ? RunView.Node(_nodeShown) : null;   // BREACH rooms are named by their node
+                _ri = ri; _cs = -1; _nodeShown = RunState.NodeId; _taShown = ta;
+                var node = RunView.Active ? RunView.Node(_nodeShown) : null;   // BREACH rooms are named by their node, generated Time-Attack rooms by their id
                 _nodeNum = node != null ? node.index + 1 : 0;
-                _room.SetText(node != null ? RunView.NodeLabel(node) : ri >= 0 && ri < _roomCodes.Length ? _roomCodes[ri] : "R-- · ---");
+                _room.SetText(node != null ? RunView.NodeLabel(node) : ta != null && !ta.Classic ? ta.Label : ri >= 0 && ri < _roomCodes.Length ? _roomCodes[ri] : "R-- · ---");
             }
             float t = RoomClock.Time; int cs = (int)(t * 100f + 0.001f);
             if (cs != _cs) { _cs = cs; UIKit.Clock(t, _clock); _timerL.A(_clock, 8).Done(); }

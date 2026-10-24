@@ -26,6 +26,7 @@ namespace Desync.UI
         float _t, _copiedT; bool _acted, _stamped; int _skipFrame = -1;
         AudioSource _sfx; AudioClip _click, _popClip;
         UIButton _retry, _continue;
+        GameObject _assistTag;
         int _run;   // 0 classic, 1 run room, 2 run boss (cash out | go deeper), 3 final boss (finish)
         internal int RunKind => _run;
 
@@ -90,12 +91,14 @@ namespace Desync.UI
             _copyLabel = copy.Label;
             _skip = UIKit.Text(panel.transform, "Skip", UIKit.Hud, 22, dim, TextAlignmentOptions.Center, "ANY KEY SKIPS"); _skip.characterSpacing = 8f;
             UIKit.Place(_skip.rectTransform, Anc.B, new Vector2(0, 128), new Vector2(600, 30));
+            _assistTag = AssistTag.Create(panel.transform, Anc.TR, new Vector2(-30, -26));
         }
 
         public void Show(RoomReport r)
         {
             base.Show();
             _r = r; _t = 0f; _acted = false; _stamped = false; _copiedT = 0f; _skipFrame = -1;
+            _assistTag.SetActive(Desync.Flow.Assist.Flagged);
             if (!_click) _click = AssetLib.Get<AudioClip>("sfx.ui.click");
             if (!_popClip) _popClip = AssetLib.Get<AudioClip>("sfx.ui.pop");
             var cfg = GameConfig.I; var inv = CultureInfo.InvariantCulture;
@@ -103,7 +106,9 @@ namespace Desync.UI
             string name = cfg.roomNames != null && ri < cfg.roomNames.Length ? cfg.roomNames[ri].ToUpperInvariant() : "";
             var node = RunView.Active ? RunView.Node(RunState.NodeId) : null;
             _run = node == null ? 0 : node.type != NodeType.Boss ? 1 : RunView.FinalAct ? 3 : 2;
-            _head.SetText(node != null ? RunView.NodeLabel(node) + (node.type == NodeType.Boss ? " DOWN" : " CLEARED") : "R" + (ri + 1).ToString("00") + " · " + name + " CLEARED");
+            var ta = TimeAttack.Current;   // a generated Time-Attack room is named by its id ("A1-07 CLEARED")
+            _head.SetText(node != null ? RunView.NodeLabel(node) + (node.type == NodeType.Boss ? " DOWN" : " CLEARED")
+                        : ta != null && !ta.Classic ? ta.Label + " CLEARED" : "R" + (ri + 1).ToString("00") + " · " + name + " CLEARED");
             _retry.gameObject.SetActive(_run == 0 || _run == 2);
             _retry.Label.SetText(_run == 2 ? "[1] CASH OUT" : "[R] RETRY");
             _retry.Base = _run == 2 ? UIKit.MedalColor(3) : UIKit.Magenta; _retry.SetSelected(false);

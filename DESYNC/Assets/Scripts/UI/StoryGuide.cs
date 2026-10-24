@@ -116,7 +116,7 @@ namespace Desync.UI
             string line; Color c;
             switch (want)
             {
-                case Step.Flip: line = g.flip; c = UIKit.Cyan; break;
+                case Step.Flip: line = Rebinds.FlipText(g.flip); c = UIKit.Cyan; break;   // "Press SPACE": the flip key as bound
                 case Step.Melt: line = g.melt; c = UIKit.Danger; break;
                 case Step.Terminal: line = g.terminal; c = UIKit.Cyan; break;
                 case Step.Hack: line = g.hack; c = UIKit.Magenta; break;

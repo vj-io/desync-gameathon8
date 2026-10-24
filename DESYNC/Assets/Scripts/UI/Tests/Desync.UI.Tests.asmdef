@@ -14,7 +14,8 @@
     "Desync.Flow",
     "Desync.Content",
     "Desync.Gen",
-    "Desync.Enemies"
+    "Desync.Enemies",
+    "Desync.TestKit"
   ],
   "includePlatforms": [],
   "overrideReferences": true,

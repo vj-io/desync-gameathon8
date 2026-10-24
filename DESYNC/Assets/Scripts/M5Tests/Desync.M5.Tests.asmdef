@@ -1,0 +1,10 @@
+{
+  "name": "Desync.M5.Tests",
+  "rootNamespace": "Desync.M5.Tests",
+  "references": ["Desync.Core","Desync.Rules","Desync.Net","Desync.Flow","Desync.UI","Desync.Audio","Desync.Art","Desync.Player","Desync.Enemies","Desync.Gen","Desync.Content","Unity.TextMeshPro","Unity.InputSystem","UnityEngine.UI","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "includePlatforms": [],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

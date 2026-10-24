@@ -81,7 +81,7 @@ namespace Desync.Build.Editor
                 var mb = DirMB(outDir);
                 var shipped = target == BuildTarget.WebGL ? DirMB(Path.Combine(outDir, "Build")) : mb;
                 Debug.Log($"[DESYNC] Build succeeded {profile}: {mb:F1} MB total" +
-                          (target == BuildTarget.WebGL ? $" ({shipped:F1} MB in Build/, gzip)" : "") +
+                          (target == BuildTarget.WebGL ? $" ({shipped:F1} MB in Build/, brotli)" : "") +
                           $", {sw.Elapsed.TotalSeconds:F0}s, {outDir}");
                 if (target == BuildTarget.WebGL && release && shipped > WebBudgetMB)
                     Debug.LogWarning($"[DESYNC] Web build {shipped:F1} MB exceeds the {WebBudgetMB} MB budget (PRD 10.6)");
@@ -144,8 +144,8 @@ namespace Desync.Build.Editor
             if (target == BuildTarget.WebGL)
             {
                 // PRD 10.1
-                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
-                PlayerSettings.WebGL.decompressionFallback = true;
+                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;   // smaller than gzip; vercel.json serves Content-Encoding: br
+                PlayerSettings.WebGL.decompressionFallback = true;   // the loader still decompresses if a host drops the header
                 PlayerSettings.WebGL.dataCaching = true;
                 PlayerSettings.WebGL.nameFilesAsHashes = true;
                 PlayerSettings.WebGL.template = "PROJECT:Desync";

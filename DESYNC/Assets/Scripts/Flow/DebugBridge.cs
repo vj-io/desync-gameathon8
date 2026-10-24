@@ -11,6 +11,7 @@ namespace Desync.Flow
 {
     /// Testing hook: unityInstance.SendMessage('DesyncDebug','Cmd','room 3'). Kept in release builds.
     /// Commands: room N (1..6) | flip | god on|off | demo on|off | state | win | tp x y z | kill ice|melt|trace|glitch
+    /// | overclock on|off (opens Endless Overclock without the DESYNC ending) | ta on|off (opens Time Attack without the unlock)
     /// `state` also hands the JSON to the page (window.__DESYNC__.debug.state()).
     public class DebugBridge : MonoBehaviour
     {
@@ -42,6 +43,8 @@ namespace Desync.Flow
                     case "flip": if (PlayerRef.Exists) PlayerRef.Root.GetComponent<FlipController>().TryFlip(); break;
                     case "god": GameState.God = On(a); break;
                     case "demo": GameState.DemoMode = On(a); break;
+                    case "overclock": OverclockRun.DebugUnlock = On(a); break;
+                    case "ta": TimeAttackRooms.DebugOpen = On(a); break;
                     case "state": PushState(StateJson()); break;
                     case "kill": Kill(a[1]); break;
                     case "win": if (RoomManager.I) RoomManager.I.OpenExit(); break;

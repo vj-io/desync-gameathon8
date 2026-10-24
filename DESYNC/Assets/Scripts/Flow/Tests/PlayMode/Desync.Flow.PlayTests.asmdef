@@ -13,7 +13,8 @@
     "UnityEditor.TestRunner",
     "Desync.Gen",
     "Desync.Content",
-    "Desync.Levels"
+    "Desync.Levels",
+    "Desync.TestKit"
   ],
   "overrideReferences": true,
   "precompiledReferences": [

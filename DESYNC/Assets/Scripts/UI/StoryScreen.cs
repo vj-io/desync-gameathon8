@@ -146,7 +146,7 @@ namespace Desync.UI
             HideCaptions();
             _logo.Show(false);
             UIKit.Kill(ref _wakeTw); _wake.gameObject.SetActive(false);
-            _skip.SetText(UIKit.Safe(_s.skipHint, UIKit.Hud)); _skip.gameObject.SetActive(true); _skipFill.fillAmount = 0f;
+            _skip.SetText(UIKit.Safe(Rebinds.FlipText(_s.skipHint), UIKit.Hud)); _skip.gameObject.SetActive(true); _skipFill.fillAmount = 0f;   // the hold is the flip key
             UIKit.Kill(ref _flashTw); _flash.color = new Color(1f, 1f, 1f, 0f);
             UIKit.Kill(ref _topTw); UIKit.Kill(ref _botTw);
             _topTw = Tween.ScaleY(_barTop, 0f, 1f, 0.5f, Ease.OutCubic, useUnscaledTime: true);
@@ -179,6 +179,7 @@ namespace Desync.UI
         internal void Finish()
         {
             if (_done) return;
+            Analytics.Track(_waking ? "story_seen" : "story_skipped", ("at", "story"));   // _waking = the wake-up card was reached
             _done = true; _waking = false;
             Cleanup();
             HideCaptions();
@@ -448,6 +449,7 @@ namespace Desync.UI
             if (!IsOn) return;
             Remember();
             Hide();
+            if (i != 0) Analytics.Track("story_skipped", ("at", "prompt"));
             if (i == 0) OnWatch?.Invoke();
         }
 

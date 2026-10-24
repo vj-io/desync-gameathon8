@@ -6,6 +6,7 @@ using Desync.Content;
 using Desync.Flow;
 using Desync.Gen;
 using Desync.Rules;
+using Desync.TestKit;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -117,6 +118,7 @@ namespace Desync.UI.Tests
         }
 
         static void Phase(RunPhase p) { RunState.Phase = p; RunEvents.PhaseChanged?.Invoke(p); }
+        static object _sink;
 
         static T Screen<T>(string field) where T : class =>
             typeof(UIManager).GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(UIManager.I) as T;
@@ -229,15 +231,19 @@ namespace Desync.UI.Tests
                 _log.Clear();
                 yield return Frames(2);
                 Click("Title/Card/Mode" + item[k]);
-                if (want[k] == null) Assert.IsEmpty(_log, "DAILY is greyed: no start");
+                if (want[k] == null) { Assert.IsEmpty(_log, "DAILY opens its hub: no start"); Assert.IsTrue(Screen<DailyScreen>("_daily").IsOn, "DAILY opens its hub"); }
                 else Assert.AreEqual(new[] { want[k] }, _log.ToArray(), "mode button " + item[k]);
             }
 
-            // keyboard: the highlight wraps CLASSIC -> CAMPAIGN; SPACE starts it
+            // keyboard: reading order CLASSIC -> up QUICK, STORY, CAMPAIGN; the highlight wraps both ways; SPACE starts it
             ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true); _log.Clear();
             yield return Frames(2);
+            for (int i = 0; i < 3; i++) yield return Key(UnityEngine.InputSystem.Key.UpArrow);
+            Assert.AreEqual(0, title.Selected, "up from CLASSIC reaches CAMPAIGN");
+            yield return Key(UnityEngine.InputSystem.Key.UpArrow);
+            Assert.AreEqual(TitleScreen.ArchiveItem, title.Selected, "up from CAMPAIGN wraps to the last entry");
             yield return Key(UnityEngine.InputSystem.Key.DownArrow);
-            Assert.AreEqual(0, title.Selected, "next wraps past DAILY to CAMPAIGN");
+            Assert.AreEqual(0, title.Selected, "down from the last entry wraps to CAMPAIGN");
             yield return Key(UnityEngine.InputSystem.Key.Space);
             Assert.AreEqual("start:Campaign", Last);
 
@@ -254,6 +260,70 @@ namespace Desync.UI.Tests
             yield return Frames(2);
             Click("Title/ClickCatcher");
             Assert.AreEqual("start:Classic", Last);
+        }
+
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Title_Menu_Opens_Each_Screen_And_Dims_Locked_Modes()
+        {
+            const string key = "desync.test.titlemenu";
+            var ui = UIManager.I; var title = Screen<TitleScreen>("_title");
+            bool taDebug = TimeAttackRooms.DebugOpen;
+            PlayerPrefs.DeleteKey(key); Desync.Net.SaveService.Unload(key);
+            try
+            {
+                // a fresh profile: DEEP LAYER, TIME ATTACK and ENDLESS OVERCLOCK are locked
+                TimeAttackRooms.DebugOpen = false; OverclockRun.DebugUnlock = false;
+                ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true); _log.Clear();
+                yield return Frames(2);
+                yield return Shot("r01b_title_menu_locked");
+                foreach (int i in new[] { TitleScreen.DeepItem, TitleScreen.TimeAttackItem, TitleScreen.OverclockItem })
+                {
+                    StringAssert.Contains("LOCKED", Txt("Title/Card/Mode" + i + "/Label"));
+                    Click("Title/Card/Mode" + i);
+                    Assert.AreEqual(TitleScreen.DefaultItem, title.Selected, "a locked entry is not highlighted");
+                }
+                StringAssert.Contains("DESYNC ENDING", Txt("Title/Card/Meta"), "a locked click says how it opens");
+                Assert.IsFalse(Screen<TimeAttackScreen>("_ta").IsOn, "locked: TIME ATTACK opens nothing");
+                Assert.IsEmpty(_log, "locked: no run starts");
+                yield return Key(UnityEngine.InputSystem.Key.DownArrow);
+                Assert.AreEqual(TitleScreen.DailyItem, title.Selected);
+                yield return Key(UnityEngine.InputSystem.Key.DownArrow);   // DEEP LAYER, TIME ATTACK, ENDLESS OVERCLOCK skipped
+                Assert.AreEqual(TitleScreen.UnlocksItem, title.Selected);
+                yield return Key(UnityEngine.InputSystem.Key.DownArrow);
+                Assert.AreEqual(TitleScreen.ArchiveItem, title.Selected);
+
+                Click("Title/Card/Mode" + TitleScreen.UnlocksItem);
+                Assert.IsTrue(Screen<UnlockTree>("_unlocks").IsOn, "UNLOCKS opens the tree");
+                ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true);
+                Click("Title/Card/Mode" + TitleScreen.ArchiveItem);
+                Assert.IsTrue(Screen<ShardArchive>("_archive").IsOn, "ARCHIVE opens the shard archive");
+                ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true);
+                Click("Title/Card/Settings");
+                Assert.IsTrue(Screen<SettingsScreen>("_settings").IsOn, "SETTINGS opens sound + access");
+                Click("Title/Card/Keys");
+                Assert.IsTrue(Screen<RebindScreen>("_rebind").IsOn, "KEYS opens the key bindings");
+                Assert.IsFalse(Screen<SettingsScreen>("_settings").IsOn);
+                Assert.IsEmpty(_log, "screens start no run");
+
+                // unlocked: both open
+                TimeAttackRooms.DebugOpen = true; OverclockRun.DebugUnlock = true;
+                ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true);
+                yield return Frames(2);
+                Assert.AreEqual("TIME ATTACK", Txt("Title/Card/Mode" + TitleScreen.TimeAttackItem + "/Label"));
+                Assert.AreEqual("ENDLESS OVERCLOCK", Txt("Title/Card/Mode" + TitleScreen.OverclockItem + "/Label"));
+                Click("Title/Card/Mode" + TitleScreen.TimeAttackItem);
+                Assert.IsTrue(Screen<TimeAttackScreen>("_ta").IsOn, "TIME ATTACK opens the room select");
+                Assert.IsEmpty(_log);
+                ui.SetMode(UIManager.Mode.None, true); ui.SetMode(UIManager.Mode.Title, true);
+                yield return Frames(2);
+                Click("Title/Card/Mode" + TitleScreen.OverclockItem);
+                Assert.AreEqual(new[] { "start:Overclock" }, _log.ToArray(), "ENDLESS OVERCLOCK starts its run");
+            }
+            finally
+            {
+                TimeAttackRooms.DebugOpen = taDebug; OverclockRun.DebugUnlock = false;
+                PlayerPrefs.DeleteKey(key); Desync.Net.SaveService.Unload();
+            }
         }
 
         // ================================================================== map
@@ -516,6 +586,14 @@ namespace Desync.UI.Tests
             Assert.IsFalse(Visible("Results/Panel/ResultsRetry"));
             StringAssert.Contains("FINISH RUN", Txt("Results/Panel/ResultsContinue/Label"));
 
+            // so does a DAILY BREACH (act 1 on the day's seed)
+            RunState.Mode = RunMode.Daily; _log.Clear();
+            GameEvents.RoomReportReady?.Invoke(Report());
+            yield return null;
+            Assert.AreEqual(3, results.RunKind, "the Daily boss ends the run: no cash out / go deeper");
+            Assert.IsFalse(Visible("Results/Panel/ResultsRetry"));
+            StringAssert.Contains("FINISH RUN", Txt("Results/Panel/ResultsContinue/Label"));
+
             // CLASSIC keeps retry
             ResetRun(); _log.Clear();
             GameEvents.RoomReportReady?.Invoke(new RoomReport { room = 2, total = 900, time = 40f, grade = 'B' });
@@ -554,6 +632,47 @@ namespace Desync.UI.Tests
             Click("RunResults/Panel/RunNew");
             Assert.AreEqual(new[] { "start:Quick" }, _log.ToArray(), "NEW RUN restarts the same mode");
             Assert.IsFalse(rr.IsOn, "a new run closes the results");
+        }
+
+        [UnityTest, Timeout(120000)]
+        public IEnumerator Run_Results_Show_Deep_Layer_Rewards_And_The_Daily_Share_Block()
+        {
+            var rr = Screen<RunResultsScreen>("_runResults");
+            var lastShare = typeof(DailyRun).GetProperty("LastShare");
+            try
+            {
+                // a Deep Layer win that paid two cosmetics
+                NewRun(42, RunPhase.Over); RunState.Won = true;
+                DeepRun.Level = 12; DeepRun.Rewards.Add(Cosmetics.All[0]); DeepRun.Rewards.Add(Cosmetics.All[1]);
+                RunEvents.RunEnded?.Invoke();
+                yield return null;
+                Assert.IsTrue(Visible("RunResults/Panel/Reward"), "a Deep Layer win shows what it earned");
+                Assert.AreEqual("REWARD EARNED · " + Cosmetics.All[0].name + " · " + Cosmetics.All[1].name, Txt("RunResults/Panel/Reward"));
+                Assert.IsTrue(Visible("RunResults/Panel/ShareLine")); Assert.IsFalse(Visible("RunResults/Panel/DailyShare"));
+                yield return Shot("r10b_run_results_reward");
+                rr.Hide();
+                DeepRun.Rewards.Clear();
+                RunEvents.RunEnded?.Invoke();
+                yield return null;
+                Assert.IsFalse(Visible("RunResults/Panel/Reward"), "nothing earned: no reward line");
+                rr.Hide();
+                DeepRun.Level = 0;
+
+                // DAILY: the share block (one line per room) replaces the one-line share text; [C] copies it
+                string share = DailyRun.ShareBlock("2026-10-24", false, new[] { Medal.Gold, Medal.Sync }, new[] { 'S', 'A' }, 5120, 98.4f);
+                lastShare.SetValue(null, share);
+                NewRun(42, RunPhase.Over); RunState.Mode = RunMode.Daily;
+                RunEvents.RunEnded?.Invoke();
+                yield return new WaitForSecondsRealtime(RunResultsScreen.End + 0.1f);
+                Assert.AreEqual(share, rr.ShareText);
+                Assert.IsTrue(Visible("RunResults/Panel/DailyShare")); Assert.IsFalse(Visible("RunResults/Panel/ShareLine"));
+                StringAssert.Contains("5120 // 1:38.40", Txt("RunResults/Panel/DailyShare"));
+                StringAssert.Contains("DAILY BREACH", Txt("RunResults/Panel/Sub"));
+                yield return Shot("r10c_run_results_daily");
+                yield return Key(UnityEngine.InputSystem.Key.C);
+                Assert.AreEqual("copy:" + share, Last);
+            }
+            finally { DeepRun.Level = 0; DeepRun.Rewards.Clear(); lastShare.SetValue(null, null); rr.Hide(); }
         }
 
         [UnityTest, Timeout(120000)]
@@ -645,19 +764,18 @@ namespace Desync.UI.Tests
             Desync.Enemies.EnemyEvents.TrackerSpawned?.Invoke(new Vector3(-6f, 0f, 2f));
             GameState.TraceActive = true; GameState.TraceRemaining = 5f;
 
-            long total = 0; const int ticks = 240;
+            Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+            Action tick = () => ui.TickAll(0.016f);
+            int total = 0; const int ticks = 240;
             for (int i = 0; i < 30; i++) ui.TickAll(0.016f);
             for (int i = 0; i < ticks; i++)
             {
                 RoomClock.Time += 0.016f; GameState.Chain = (i / 20) % 7; GameState.TraceCount = (i / 50) % 3; GameState.Melt = Mathf.Repeat(GameState.Melt + 0.4f, 100f);
-                long a = GC.GetTotalMemory(false);
-                ui.TickAll(0.016f);
-                long b = GC.GetTotalMemory(false);
-                if (b > a) total += b - a;
+                total += Allocs.Beyond(tick);
             }
-            Debug.Log("[UI-TEST] managed growth over " + ticks + " BREACH HUD ticks: " + total + " bytes");
+            Debug.Log("[UI-TEST] allocations over " + ticks + " BREACH HUD ticks: " + total);
             Object.Destroy(aud.gameObject); PlayerRef.Cam = null;
-            Assert.Less(total / (float)ticks, 64f, "BREACH HUD allocates per frame");
+            Assert.AreEqual(0, total, "BREACH HUD allocates per frame");
         }
 
         [UnityTest, Timeout(120000)]

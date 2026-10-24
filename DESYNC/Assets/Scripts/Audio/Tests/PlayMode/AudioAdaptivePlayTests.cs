@@ -5,7 +5,8 @@ using System.Reflection;
 using Desync.Enemies;
 using Desync.Flow;
 using NUnit.Framework;
-using Unity.Profiling;
+using UnityEngine.TestTools.Constraints;
+using Is = UnityEngine.TestTools.Constraints.Is;
 using UnityEngine;
 using UnityEngine.TestTools;
 using RuleEvent = Desync.Rules.EventType;
@@ -532,90 +533,70 @@ namespace Desync.Audio.Tests
         }
 
         // ------------------------------------------------------------------ zero GC
-        /// Same method as AudioManagerPlayTests.UpdateAndEventPathsAllocateNothing: the profiler's per-frame GC counter, one
-        /// burst of handler calls inside a frame compared with idle frames. The M3 handlers and the layer / act / decrypt / uplink
-        /// paths of Update must not allocate.
+        static object _sink;
+
+        /// Same method as AudioManagerPlayTests.UpdateAndEventPathsAllocateNothing (Unity's GC.Alloc constraint around bursts of
+        /// handler calls): the M3 handlers and the layer / act / decrypt / uplink paths of Update must not allocate.
         [UnityTest]
         public IEnumerator M3HandlersAndLayerPathsAllocateNothing()
         {
             GameState.IceAlive = 1;
             LayerState.Set(true);
             GameState.TraceActive = true;
-            using (var rec = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame"))
+            T H<T>(string name) where T : Delegate => (T)Delegate.CreateDelegate(typeof(T), m, typeof(AudioManager).GetMethod(name, NonPublic));
+            var upd = H<Action>("Update");
+            var scored = H<Action<ScorePop>>("OnScored");
+            var grazed = H<Action<string>>("OnGrazed");
+            var tracker = H<Action<Vector3>>("OnTrackerSpawned");
+            var phase = H<Action<int>>("OnAuditorPhase");
+            var alerted = H<Action<Vector3, Alert>>("OnAlerted");
+            var sentinel = H<Action<Vector3>>("OnSentinelPulse");
+            var daemon = H<Action<Vector3, bool>>("OnDaemonCrossed");
+            var runPhase = H<Action<RunPhase>>("OnRunPhase");
+            var buy = H<Action<int>>("OnBuy");
+            var wall = H<Action>("OnWallSwap");
+
+            void Burst(int n)
             {
-                T H<T>(string name) where T : Delegate => (T)Delegate.CreateDelegate(typeof(T), m, typeof(AudioManager).GetMethod(name, NonPublic));
-                var upd = H<Action>("Update");
-                var scored = H<Action<ScorePop>>("OnScored");
-                var grazed = H<Action<string>>("OnGrazed");
-                var tracker = H<Action<Vector3>>("OnTrackerSpawned");
-                var phase = H<Action<int>>("OnAuditorPhase");
-                var alerted = H<Action<Vector3, Alert>>("OnAlerted");
-                var sentinel = H<Action<Vector3>>("OnSentinelPulse");
-                var daemon = H<Action<Vector3, bool>>("OnDaemonCrossed");
-                var runPhase = H<Action<RunPhase>>("OnRunPhase");
-                var buy = H<Action<int>>("OnBuy");
-                var wall = H<Action>("OnWallSwap");
-
-                void Burst(int n)
+                for (int i = 0; i < n; i++)
                 {
-                    for (int i = 0; i < n; i++)
-                    {
-                        GameState.Melt = 50f + (i % 50);
-                        GameState.TraceCount = 1 + i % 3;
-                        GameState.NearestIce = Vector3.one * (i % 15);
-                        upd();
-                        scored(new ScorePop { type = i % 4 == 0 ? RuleEvent.Graze : RuleEvent.CleanFlip, multiplier = 1f + (i % 8) * 0.5f });
-                        grazed("ICE-1");
-                        tracker(Vector3.one * i);
-                        alerted(Vector3.one * i, (Alert)(i % 5));
-                        sentinel(Vector3.zero);
-                        daemon(Vector3.zero, (i & 1) == 0);
-                        phase(2 + i % 3);
-                        buy(0);
-                        wall();
-                        m.LanternNear(Vector3.one * i);
-                        m.PlayEnemyCue((EnemyCue)(i % 5), Vector3.one);
-                    }
-                    runPhase(RunPhase.Draft);
-                    for (int i = 0; i < 20; i++) upd();
-                    runPhase(RunPhase.Map);
+                    GameState.Melt = 50f + (i % 50);
+                    GameState.TraceCount = 1 + i % 3;
+                    GameState.NearestIce = Vector3.one * (i % 15);
+                    upd();
+                    scored(new ScorePop { type = i % 4 == 0 ? RuleEvent.Graze : RuleEvent.CleanFlip, multiplier = 1f + (i % 8) * 0.5f });
+                    grazed("ICE-1");
+                    tracker(Vector3.one * i);
+                    alerted(Vector3.one * i, (Alert)(i % 5));
+                    sentinel(Vector3.zero);
+                    daemon(Vector3.zero, (i & 1) == 0);
+                    phase(2 + i % 3);
+                    buy(0);
+                    wall();
+                    m.LanternNear(Vector3.one * i);
+                    m.PlayEnemyCue((EnemyCue)(i % 5), Vector3.one);
                 }
-
-                Burst(50);   // warm-up: first-call JIT, lazy statics
-                for (int i = 0; i < 5; i++) yield return null;
-                Assert.IsTrue(rec.Valid, "GC counter unavailable");
-
-                long baseline = 0;
-                for (int i = 0; i < 20; i++) { yield return null; baseline = Math.Max(baseline, rec.LastValue); }
-
-                var junk = new byte[8][];   // instrument sanity: 8 x 16 KB must show in the frame counter
-                for (int i = 0; i < 8; i++) junk[i] = new byte[16384];
-                yield return null;
-                long seen = rec.LastValue;
-                GC.KeepAlive(junk);
-                Assert.Greater(seen, baseline + 100000, "GC counter does not register a 128 KB allocation (baseline " + baseline + ", saw " + seen + ")");
-
-                var parts = new (string name, Action a)[]
-                {
-                    ("Update with layers, hums, ticks", () => { for (int i = 0; i < 300; i++) { GameState.Melt = 50f + (i % 50); GameState.TraceCount = 1 + i % 3; upd(); } }),
-                    ("OnScored", () => { for (int i = 0; i < 300; i++) scored(new ScorePop { type = RuleEvent.Graze, multiplier = 1f + i % 8 }); }),
-                    ("OnGrazed + OnTrackerSpawned", () => { for (int i = 0; i < 300; i++) { grazed("ICE-1"); tracker(Vector3.one); } }),
-                    ("OnAlerted + OnAuditorPhase", () => { for (int i = 0; i < 300; i++) { alerted(Vector3.one, (Alert)(i % 5)); phase(2 + i % 3); } }),
-                    ("OnSentinelPulse + OnDaemonCrossed", () => { for (int i = 0; i < 300; i++) { sentinel(Vector3.zero); daemon(Vector3.zero, true); } }),
-                    ("PlayEnemyCue + LanternNear", () => { for (int i = 0; i < 300; i++) { m.PlayEnemyCue((EnemyCue)(i % 5), Vector3.one); m.LanternNear(Vector3.one); } }),
-                    ("Run cues + decrypt ticks", () => { for (int i = 0; i < 100; i++) { runPhase(RunPhase.Draft); for (int k = 0; k < 20; k++) upd(); buy(0); wall(); } runPhase(RunPhase.Map); }),
-                };
-                long burst = 0;
-                string worstName = "";
-                foreach (var (name, a) in parts)
-                {
-                    yield return null;
-                    a();
-                    yield return null;
-                    if (rec.LastValue > burst) { burst = rec.LastValue; worstName = name + " " + rec.LastValue + " B"; }
-                }
-                Assert.LessOrEqual(burst, baseline + 512, "M3 audio paths allocated: worst part " + worstName + ", idle frame max " + baseline + " B");
+                runPhase(RunPhase.Draft);
+                for (int i = 0; i < 20; i++) upd();
+                runPhase(RunPhase.Map);
             }
+
+            Burst(50);   // warm-up: first-call JIT, lazy statics
+            yield return null;
+            Assert.That(() => { _sink = new byte[64]; }, Is.AllocatingGCMemory(), "the instrument sees a known allocation");
+
+            var parts = new (string name, Action a)[]
+            {
+                ("Update with layers, hums, ticks", () => { for (int i = 0; i < 300; i++) { GameState.Melt = 50f + (i % 50); GameState.TraceCount = 1 + i % 3; upd(); } }),
+                ("OnScored", () => { for (int i = 0; i < 300; i++) scored(new ScorePop { type = RuleEvent.Graze, multiplier = 1f + i % 8 }); }),
+                ("OnGrazed + OnTrackerSpawned", () => { for (int i = 0; i < 300; i++) { grazed("ICE-1"); tracker(Vector3.one); } }),
+                ("OnAlerted + OnAuditorPhase", () => { for (int i = 0; i < 300; i++) { alerted(Vector3.one, (Alert)(i % 5)); phase(2 + i % 3); } }),
+                ("OnSentinelPulse + OnDaemonCrossed", () => { for (int i = 0; i < 300; i++) { sentinel(Vector3.zero); daemon(Vector3.zero, true); } }),
+                ("PlayEnemyCue + LanternNear", () => { for (int i = 0; i < 300; i++) { m.PlayEnemyCue((EnemyCue)(i % 5), Vector3.one); m.LanternNear(Vector3.one); } }),
+                ("Run cues + decrypt ticks", () => { for (int i = 0; i < 100; i++) { runPhase(RunPhase.Draft); for (int k = 0; k < 20; k++) upd(); buy(0); wall(); } runPhase(RunPhase.Map); }),
+            };
+            foreach (var (name, a) in parts) a();   // each part's first run
+            foreach (var (name, a) in parts) Assert.That(new TestDelegate(a), Is.Not.AllocatingGCMemory(), "M3 audio " + name + " allocated");
         }
     }
 }

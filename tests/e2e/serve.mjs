@@ -1,7 +1,9 @@
 // Static server for a local WebGL build, so the e2e tests run against the same files that ship.
 //   node serve.mjs            env: BUILD_DIR (default ../../Builds/WebRelease), PORT (default 8080)
-// Headers follow web/site/vercel.json: Unity's gzip *.unityweb files get Content-Encoding: gzip and the type of the
-// file underneath (.wasm -> application/wasm, .js -> application/javascript, anything else octet-stream).
+// Headers follow web/site/vercel.json: *.unityweb files get the type of the file underneath (.wasm -> application/wasm,
+// .js -> application/javascript, anything else octet-stream). A gzip build (magic 1f 8b) also gets Content-Encoding: gzip;
+// a Brotli build goes out as stored over this plain-http server (browsers decode br only on secure hosts) and the loader's
+// decompression fallback unpacks it. The real host serves Content-Encoding: br.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,11 +24,16 @@ const TYPES = {
   '.woff2': 'font/woff2', '.txt': 'text/plain',
 };
 
+function isGzip(file) {
+  const fd = fs.openSync(file, 'r'), b = Buffer.alloc(2);
+  try { return fs.readSync(fd, b, 0, 2, 0) === 2 && b[0] === 0x1f && b[1] === 0x8b; } finally { fs.closeSync(fd); }
+}
+
 function headersFor(file) {
   if (file.endsWith('.unityweb')) {
     const ext = path.extname(file.slice(0, -'.unityweb'.length));
     const type = ext === '.wasm' ? 'application/wasm' : ext === '.js' ? 'application/javascript' : 'application/octet-stream';
-    return { 'Content-Type': type, 'Content-Encoding': 'gzip' };
+    return isGzip(file) ? { 'Content-Type': type, 'Content-Encoding': 'gzip' } : { 'Content-Type': type };
   }
   return { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' };
 }

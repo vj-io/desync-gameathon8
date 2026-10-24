@@ -114,7 +114,9 @@ namespace Desync.Art.Editor
             return res;
         }
 
-        /// Bytes allocated per call by the ART handlers that run on GameEvents.Flipped / LayerState.Changed, and by Update.
+        /// GC allocations made by the ART handlers that run on GameEvents.Flipped / LayerState.Changed, and by Update: counted with
+        /// the GC.Alloc profiler marker on this thread (GC.GetAllocatedBytesForCurrentThread reads 0 under Unity's Mono), after a
+        /// check that the counter sees one known allocation.
         static int CheckAllocs()
         {
             const System.Reflection.BindingFlags F = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
@@ -131,13 +133,26 @@ namespace Desync.Art.Editor
 
             void Round() { onFlip(true); onLayer(true); rainLayer(true); update(); onFlip(false); onLayer(false); rainLayer(false); update(); }
             Round(); Round();   // warm-up (JIT, first-use caches)
-            long before = System.GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 20; i++) Round();
-            long perFlip = (System.GC.GetAllocatedBytesForCurrentThread() - before) / 40;
+            int seen = Allocs(() => _sink = new byte[64]);
+            int allocs = Allocs(() => { for (int i = 0; i < 20; i++) Round(); });
             PostFXController.SetWorldBlend(mats, false);
             Object.DestroyImmediate(go);
-            Debug.Log($"[DESYNC] ART alloc per flip (Flipped + LayerState.Changed handlers + one Update): {perFlip} bytes");
-            return perFlip > 0 ? 1 : 0;
+            Debug.Log($"[DESYNC] ART allocations in 40 flips (Flipped + LayerState.Changed handlers + one Update each): {allocs}");
+            if (seen == 0) Debug.LogError("[DESYNC] ART alloc check: the GC.Alloc counter missed a known allocation");
+            return allocs > 0 || seen == 0 ? 1 : 0;
+        }
+
+        static object _sink;
+
+        static int Allocs(System.Action call)
+        {
+            var r = UnityEngine.Profiling.Recorder.Get("GC.Alloc");
+            r.enabled = false;
+            r.FilterToCurrentThread();
+            r.enabled = true;
+            try { call(); }
+            finally { r.enabled = false; r.CollectFromAllThreads(); }
+            return r.sampleBlockCount;
         }
 
         // ---------------------------------------------------------------------------------------------------------

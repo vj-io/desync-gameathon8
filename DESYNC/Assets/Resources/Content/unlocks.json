@@ -1,0 +1,87 @@
+{
+  "_about": "Unlock tree (Fragments). cost 0 = open from the start. grants = keys written to SaveV3.unlocks; exploits = exploit ids a pool node opens for Campaign / Quick drafts and markets; starter = the exploit a run starts holding when this node is the equipped starter. tag = the card's one-line label when the node has neither exploits nor a starter. col/row place the card; by = hour of play by which a median player can afford it (docs/BALANCE.md, Unlock economy); when = the cadence label shown on the card.",
+  "nodes": [
+    {
+      "id": "pool_a", "name": "STARTER SET", "cost": 0, "col": 0, "row": 0, "by": 0.5, "when": "0-0.5 H",
+      "desc": "The first 8 exploits. Open from the start.",
+      "requires": [], "grants": ["unlock_pool_a"],
+      "exploits": ["clean_handshake", "packet_loss", "brinkmanship", "heat_sink", "coolant_leak", "liquid_cooling", "log_wipe", "rootkit"]
+    },
+    {
+      "id": "pool_b", "name": "EXPLOITS II", "cost": 90, "col": 1, "row": 0, "by": 2, "when": "1-2 H",
+      "desc": "+8 exploits. The PHANTOM line arrives: decoys and misdirection.",
+      "requires": ["pool_a"], "grants": ["unlock_pool_b"],
+      "exploits": ["slipstream", "afterimage", "thermal_throttle", "ghost_ping", "loopback", "static_veil", "mirror_shard", "turbo_compile"]
+    },
+    {
+      "id": "pool_c", "name": "EXPLOITS III", "cost": 110, "col": 2, "row": 0, "by": 2, "when": "1-2 H",
+      "desc": "+8 exploits. More GHOST chains, REDLINE heat and TRACER tools.",
+      "requires": ["pool_b"], "grants": ["unlock_pool_c"],
+      "exploits": ["echo_flip", "null_trail", "phase_memory", "burn_rate", "fever_code", "heat_exchange", "signal_jam", "honeypot"]
+    },
+    {
+      "id": "pool_d", "name": "EXPLOITS IV", "cost": 340, "col": 3, "row": 0, "by": 6, "when": "4-8 H",
+      "desc": "+8 exploits. Cold Boot, Overvolt, Shadow Copy and the rest of the Common and Rare tail.",
+      "requires": ["pool_c"], "grants": ["unlock_pool_d"],
+      "exploits": ["cold_boot", "thermal_paste", "overclock_hack", "false_positive", "puppet_thread", "shadow_copy", "overvolt", "backdoor"]
+    },
+    {
+      "id": "pool_e", "name": "EXPLOITS V", "cost": 420, "col": 4, "row": 0, "by": 7, "when": "4-8 H",
+      "desc": "+8 exploits. Rare build-arounds and the first Epics.",
+      "requires": ["pool_d"], "grants": ["unlock_pool_e"],
+      "exploits": ["ghost_cache", "hall_of_mirrors", "kernel_panic", "proxy_chain", "overheat_halo", "crosstalk", "spoofed_badge", "audit_trail"]
+    },
+    {
+      "id": "pool_f", "name": "EXPLOITS VI", "cost": 480, "col": 5, "row": 0, "by": 8, "when": "4-8 H",
+      "desc": "The last 8 exploits: Epics that change how a run plays.",
+      "requires": ["pool_e"], "grants": ["unlock_pool_f"],
+      "exploits": ["ghost_protocol", "zero_day", "meltdown_clause", "redline_surge", "dead_mans_switch", "burnout_pulse", "double_tap", "sysadmin_key"]
+    },
+    {
+      "id": "duos", "name": "DUOS", "cost": 80, "col": 3, "row": 1, "by": 2, "when": "1-2 H",
+      "desc": "Duo exploits can be offered once you hold both parent archetypes.",
+      "requires": ["pool_c"], "grants": ["unlock_duos"],
+      "exploits": ["spectral_fever", "poltergeist", "clock_skew", "invisible_ink", "burning_effigy", "thermal_runaway", "live_wire", "overclocked_puppet", "wrong_number", "brute_force"]
+    },
+    {
+      "id": "starter_ghost", "name": "GHOST START", "cost": 100, "col": 0, "row": 2, "by": 1, "when": "0.5-1 H",
+      "desc": "Campaign and Quick runs start holding Clean Handshake. One starter at a time: equip it here.",
+      "requires": [], "grants": ["unlock_starter_ghost"], "starter": "clean_handshake"
+    },
+    {
+      "id": "starter_phantom", "name": "PHANTOM START", "cost": 120, "col": 1, "row": 2, "by": 1, "when": "0.5-1 H",
+      "desc": "Campaign and Quick runs start holding Ghost Ping. One starter at a time: equip it here.",
+      "requires": ["starter_ghost"], "grants": ["unlock_starter_phantom"], "starter": "ghost_ping"
+    },
+    {
+      "id": "starter_redline", "name": "REDLINE START", "cost": 130, "col": 2, "row": 2, "by": 4, "when": "2-4 H",
+      "desc": "Campaign and Quick runs start holding Brinkmanship. One starter at a time: equip it here.",
+      "requires": ["starter_phantom"], "grants": ["unlock_starter_redline"], "starter": "brinkmanship"
+    },
+    {
+      "id": "starter_overclock", "name": "OVERCLOCK START", "cost": 150, "col": 3, "row": 2, "by": 4, "when": "2-4 H",
+      "desc": "Campaign and Quick runs start holding Coolant Leak. One starter at a time: equip it here.",
+      "requires": ["starter_redline"], "grants": ["unlock_starter_overclock"], "starter": "coolant_leak"
+    },
+    {
+      "id": "starter_tracer", "name": "TRACER START", "cost": 170, "col": 4, "row": 2, "by": 4, "when": "2-4 H",
+      "desc": "Campaign and Quick runs start holding Log Wipe. One starter at a time: equip it here.",
+      "requires": ["starter_overclock"], "grants": ["unlock_starter_tracer"], "starter": "log_wipe"
+    },
+    {
+      "id": "daily", "name": "DAILY BREACH", "cost": 0, "col": 0, "row": 3, "by": 0.5, "when": "0-0.5 H",
+      "desc": "One shared seed a day. Visible from the start.",
+      "requires": [], "grants": ["unlock_daily"], "tag": "ONE SEED A DAY"
+    },
+    {
+      "id": "blackmarket", "name": "BLACK MARKET", "cost": 80, "col": 1, "row": 3, "by": 1, "when": "0.5-1 H",
+      "desc": "Black Market nodes appear on the run map: spend Cycles on exploits, removals and Backups. Until then they play as Infiltration rooms.",
+      "requires": [], "grants": ["unlock_blackmarket"], "tag": "MARKET NODES"
+    },
+    {
+      "id": "timeattack", "name": "TIME-ATTACK", "cost": 70, "col": 2, "row": 3, "by": 2, "when": "1-2 H",
+      "desc": "Fixed-seed rooms with Bronze, Silver, Gold and SYNC medals, and ghost replays.",
+      "requires": [], "grants": ["unlock_timeattack"], "tag": "MEDALS + GHOSTS"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   "name": "desync-e2e",
   "private": true,
   "type": "module",
-  "description": "Browser acceptance tests (E2E-01..03) against the WebGL build, through window.__DESYNC__",
+  "description": "Browser acceptance tests (E2E-01..05, analytics hook, page template) against the WebGL build, through window.__DESYNC__",
   "scripts": {
     "serve": "node serve.mjs",
     "test": "playwright test"

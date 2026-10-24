@@ -1,7 +1,7 @@
 {
   "name": "Desync.Enemies.PlayTests",
   "rootNamespace": "Desync.Enemies.Tests",
-  "references": ["Desync.Core","Desync.Enemies","Unity.AI.Navigation","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "references": ["Desync.Core","Desync.Enemies","Unity.AI.Navigation","UnityEngine.TestRunner","UnityEditor.TestRunner","Desync.TestKit"],
   "includePlatforms": [],
   "overrideReferences": true,
   "precompiledReferences": ["nunit.framework.dll"],

@@ -4,6 +4,7 @@ using System.Text;
 using Desync.Content;
 using Desync.Flow;
 using Desync.Net;
+using Desync.Rules;
 using PrimeTween;
 using TMPro;
 using UnityEngine;
@@ -13,15 +14,18 @@ namespace Desync.UI
 {
     /// Deep Layer select (title menu, once the first ARCHITECT kill opens it). Flow's model (DeepLayer.cs): a Deep Layer run is a CAMPAIGN
     /// under heat mutators, its level is the total heat of the picks, every level has a preset, and levels open one at a time up to
-    /// RunUnlocks.MaxDeepLayer. The screen shows DL 1-10 (locked ones dimmed), the 20 heat mutators as rank tiles (click / SPACE steps the
-    /// rank, wrapping to off), the heat total against the level, the Fragments reward and whether the bosses run hot. START raises
-    /// DeepRun.StartRequested(level, picks) once DeepRules.Check passes; PRESET reloads the level's default picks.
+    /// RunUnlocks.MaxDeepLayer. The screen shows DL 1-30 as three rows of ten (locked ones dimmed; gold = a reward still to earn, green = earned),
+    /// the 20 heat mutators as rank tiles (click / SPACE steps the rank, wrapping to off), the heat total against the level, the Fragments
+    /// bonus, the level's cosmetic reward (DL 11-20 and DL 30; DL 21-29 are played for the DL 30 one) and whether the bosses run hot.
+    /// START raises DeepRun.StartRequested(level, picks) once DeepRules.Check passes; PRESET reloads the level's default picks.
     /// One linear focus ring (levels, tiles, PRESET, BACK, START): arrows / WASD / d-pad move it, SPACE / Enter / pad A act, mouse hover
     /// moves it and a click acts.
     public sealed class DeepLayerScreen : UIPanel
     {
         const int MaxTiles = 20, Cols = 4, Rows = 5;
-        const float TileW = 440f, TileH = 118f, TileGapX = 20f, TileGapY = 12f, InputGuard = 0.25f;
+        const float TileW = 440f, TileH = 118f, TileGapX = 20f, TileGapY = 6f, InputGuard = 0.25f;
+        const int LevelCols = 10;
+        const float LevelW = 128f, LevelH = 36f, LevelPitchX = 138f, LevelPitchY = 40f, TilesTop = 252f;
 
         sealed class Tile
         {
@@ -31,7 +35,7 @@ namespace Desync.UI
         readonly Tile[] _tile = new Tile[MaxTiles];
         UIButton[] _lvl; UIButton _preset, _back, _start;
         Image[] _ring; UIButton[] _btn; Action[] _act;
-        TMP_Text _head, _sub, _best, _heat, _status, _reward, _boss;
+        TMP_Text _head, _sub, _best, _heat, _status, _reward, _boss, _prize;
         RectTransform _panel; Tween _pop, _startTw;
         readonly List<MutatorPick> _picks = new List<MutatorPick>();
         readonly StringBuilder _sb = new StringBuilder(96);
@@ -46,6 +50,7 @@ namespace Desync.UI
         internal bool CanStart { get; private set; }
         internal string StatusText => _status.text;
         internal string RewardText => _reward.text;
+        internal string PrizeText => _prize.text;
         internal int RankOf(string id) { for (int i = 0; i < _tiles; i++) if (_tile[i].M.id == id) return _tile[i].Rank; return -1; }
         internal IReadOnlyList<MutatorPick> CurrentPicks => _picks;
 
@@ -78,15 +83,19 @@ namespace Desync.UI
             for (int i = 0; i < DeepRules.MaxLevel; i++)
             {
                 int level = i + 1;
-                var b = UIButton.Create(panel.transform, "Level" + level, "DL " + level, Anc.TL, new Vector2(40 + i * 150, -140), new Vector2(140, 64), 28, UIKit.Cyan, () => PickLevel(level), UIKit.Hud);
+                var b = UIButton.Create(panel.transform, "Level" + level, "DL " + level, Anc.TL, new Vector2(40 + i % LevelCols * LevelPitchX, -(128 + i / LevelCols * LevelPitchY)),
+                                        new Vector2(LevelW, LevelH), 22, UIKit.Cyan, () => PickLevel(level), UIKit.Hud);
                 _lvl[i] = b; Reg(LevelIdx(level), b, () => PickLevel(level));
             }
+            _prize = UIKit.Text(panel.transform, "Prize", UIKit.Hud, 22, UIKit.Paper, TextAlignmentOptions.TopLeft); _prize.characterSpacing = 2f; _prize.richText = false;
+            _prize.textWrappingMode = TextWrappingModes.Normal;
+            UIKit.Place(_prize.rectTransform, Anc.TR, new Vector2(-40, -126), new Vector2(380, 118));
 
             for (int i = 0; i < _tiles; i++)
             {
                 int k = i; var t = _tile[i];
                 int col = i % Cols, row = i / Cols;
-                var b = UIButton.Create(panel.transform, "Tile" + i, "", Anc.TL, new Vector2(40 + col * (TileW + TileGapX), -(224 + row * (TileH + TileGapY))), new Vector2(TileW, TileH), 20, UIKit.Dim, () => StepRank(k), UIKit.Hud);
+                var b = UIButton.Create(panel.transform, "Tile" + i, "", Anc.TL, new Vector2(40 + col * (TileW + TileGapX), -(TilesTop + row * (TileH + TileGapY))), new Vector2(TileW, TileH), 20, UIKit.Dim, () => StepRank(k), UIKit.Hud);
                 t.B = b;
                 t.Fill = UIKit.Img(b.transform, "Active", new Color(UIKit.Magenta.r, UIKit.Magenta.g, UIKit.Magenta.b, 0.16f)); UIKit.Stretch(t.Fill.rectTransform); t.Fill.transform.SetSiblingIndex(1);
                 t.Name = UIKit.Text(b.transform, "Name", UIKit.Hud, 24, UIKit.Paper, TextAlignmentOptions.Left); t.Name.fontStyle = FontStyles.Bold; t.Name.richText = false;
@@ -174,14 +183,17 @@ namespace Desync.UI
             var errors = DeepRules.Check(_level, _picks, cat, _maxDL);
             CanStart = errors.Count == 0;
 
+            var save = SaveService.Data;
             for (int i = 0; i < DeepRules.MaxLevel; i++)
             {
                 int level = i + 1; bool open = level <= _maxDL;
                 var b = _lvl[i];
                 b.Label.SetText(open ? "DL " + level : UIKit.Safe("▒ " + level, UIKit.Hud));
-                b.Base = open ? UIKit.Cyan : new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.4f); b.Hot = open ? UIKit.Magenta : b.Base;
+                var tint = DeepRewards.ForLevel(level) == null ? UIKit.Cyan : DeepRewards.Earned(save, level) ? UIKit.Green : UIKit.MedalColor(3);   // gold: a reward still to earn
+                b.Base = open ? tint : new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.4f); b.Hot = open ? UIKit.Magenta : b.Base;
                 b.SetSelected(level == _level);
             }
+            PaintPrize(save);
             for (int i = 0; i < _tiles; i++)
             {
                 var t = _tile[i]; int max = t.M.ranks.Count; bool on = t.Rank > 0;
@@ -200,10 +212,31 @@ namespace Desync.UI
             _status.SetText(StatusLine(errors));
             _status.color = CanStart ? UIKit.Green : UIKit.Paper;
             int percent = Mathf.Min(_level, DeepRules.RewardCap) * DeepRules.RewardPercent;
-            _reward.SetText("REWARD +" + percent + " % FRAGMENTS · A 200 RUN BANKS " + (200 + DeepRules.Bonus(200, _level)));
-            _boss.SetText(_level >= DeepRules.BossHeatLevel ? "BOSS HEAT ON · " + (_level < DeepRules.MaxLevel ? "A WIN OPENS DL " + (_level + 1) : "THE DEEPEST LEVEL OF THIS BUILD")
+            _reward.SetText("FRAGMENTS +" + percent + " %" + (_level > DeepRules.RewardCap ? " (CAP)" : "") + " · A 200 RUN BANKS " + (200 + DeepRules.Bonus(200, _level)));
+            _boss.SetText(_level >= DeepRules.BossHeatLevel ? "BOSS HEAT ON · " + (_level < DeepRules.MaxLevel ? "A WIN OPENS DL " + (_level + 1) : "THE DEEPEST LEVEL")
                                                               : "BOSS HEAT FROM DL " + DeepRules.BossHeatLevel + (_level < DeepRules.MaxLevel ? " · A WIN OPENS DL " + (_level + 1) : ""));
             _start.Base = CanStart ? UIKit.Magenta : new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f); _start.Hot = CanStart ? UIKit.Cyan : _start.Base; _start.SetSelected(false);
+        }
+
+        /// The selected level's reward: a cosmetic at DL 11-20 and DL 30 (earned by winning the level), Fragments only elsewhere.
+        void PaintPrize(SaveV3 save)
+        {
+            var c = DeepRewards.ForLevel(_level);
+            _sb.Clear();
+            Color tint = UIKit.Dim;
+            if (c != null)
+            {
+                bool earned = DeepRewards.Earned(save, _level);
+                bool worn = earned && Cosmetics.Equipped(save, c.slot) == c;
+                _sb.Append("DL ").Append(_level).Append(" REWARD\n").Append(c.name).Append(" · ").Append(c.slot == CosmeticSlot.Flip ? "FLIP EFFECT" : "TITLE").Append('\n')
+                   .Append(earned ? (worn ? "EARNED · WORN" : "EARNED") : _level > _maxDL ? "LOCKED" : "WIN DL " + _level + " TO EARN");
+                tint = earned ? UIKit.Green : UIKit.MedalColor(3);
+            }
+            else if (_level > DeepRules.RewardCap)
+                _sb.Append("DL ").Append(_level).Append(" · NO REWARD\nFRAGMENT BONUS STOPS AT DL ").Append(DeepRules.RewardCap).Append("\nPLAYED FOR DL ").Append(DeepRewards.CosmeticLevel).Append(" · SYNC GOLD");
+            else
+                _sb.Append("DL ").Append(_level).Append(" · FRAGMENTS ONLY\nCOSMETICS START AT DL ").Append(DeepRewards.FirstLevel);
+            _prize.SetText(UIKit.Safe(_sb.ToString(), UIKit.Hud)); _prize.color = tint;
         }
 
         string StatusLine(List<string> errors)

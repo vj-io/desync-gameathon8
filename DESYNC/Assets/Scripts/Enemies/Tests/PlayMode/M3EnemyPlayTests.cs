@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Desync.TestKit;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -576,6 +577,8 @@ namespace Desync.Enemies.Tests
             yield return null;
         }
 
+        static object _sink;
+
         /// Every M3 enemy active (Lantern, Sentinel, split Splitter, crossed Daemon, Watcher, puppet string, Auditor Drone,
         /// all three decoys and a drone answering the noise): no managed allocations per frame, in RENDER then SOURCE.
         [UnityTest]
@@ -617,23 +620,22 @@ namespace Desync.Enemies.Tests
                 Assert.IsNotNull(Object.FindAnyObjectByType<AuditorDrone>());
                 foreach (var m in split.minis) Assert.IsTrue(m.gameObject.activeSelf);
 
-                long worst = 0;
+                // every enemy's Update + LateUpdate, counted exactly (Allocs: a real frame also carries the runner's own)
+                Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+                int extra = 0;
+                string who = "";
                 for (int pass = 0; pass < 2; pass++)
                 {
                     if (pass == 1) { Flip(true); yield return Sim(0.2f); }
-                    for (int f = 0; f < 40; f++)   // 1.3 s of room time: inside the Daemon's 2 s lose window
-                    {
-                        long before = System.GC.GetAllocatedBytesForCurrentThread();
-                        RoomClock.Time += Step;
-                        yield return null;
-                        long d = System.GC.GetAllocatedBytesForCurrentThread() - before;
-                        if (d > worst) worst = d;
-                    }
+                    var frame = Allocs.Frame("Desync.Enemies");   // bound again: the layer change may wake others
+                    RoomClock.Time += Step; frame.Run();   // the bound calls' first run
+                    for (int f = 0; f < 40; f++) { RoomClock.Time += Step; extra += frame.Count(); }   // 1.3 s of room time: inside the Daemon's 2 s lose window
+                    who += (pass == 0 ? "RENDER: " : "; SOURCE: ") + frame.Offenders;
                     if (pass == 0) Assert.IsTrue(dm.Crossed && dm.Hunting, "measured with the Daemon crossed and chasing");
                 }
-                Debug.Log($"[DESYNC] M3 enemies GC per frame, worst = {worst} B");
+                Debug.Log($"[DESYNC] M3 enemies: allocations in 80 frames = {extra}");
                 Assert.IsTrue(GameState.Alive);
-                Assert.AreEqual(0, worst, "managed bytes allocated in one frame");
+                Assert.AreEqual(0, extra, "managed allocations in enemy frames: " + who);
             }
             finally { foreach (var mb in disabled) if (mb) mb.enabled = true; }
         }

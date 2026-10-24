@@ -1,5 +1,6 @@
 using System.Collections;
 using System.IO;
+using Desync.TestKit;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -17,6 +18,7 @@ namespace Desync.UI.Tests
     public class UISmokeTests
     {
         static string ShotDir => Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", ".work", "ui", "shots"));
+        static object _sink;
 
         static IEnumerator Frames(int n) { for (int i = 0; i < n; i++) yield return null; }
 
@@ -329,35 +331,35 @@ namespace Desync.UI.Tests
             yield return Shot("04_hud_hack");
             GameState.InHack = false;
 
-            // steady-state allocation check: tick the whole UI by hand with moving timers, count managed allocations
-            long total = 0; int ticks = 240;
-            for (int i = 0; i < 30; i++) ui.TickAll(0.016f);
-            for (int i = 0; i < ticks; i++)
+            // steady-state allocation check: tick the whole UI by hand with moving timers, count managed allocations. The same
+            // 240 ticks run once to warm (first use of pooled pops, tweens, text buffers) from the same inputs, then are counted.
+            Assert.Greater(Allocs.Count(() => _sink = new byte[64]), 0, "the instrument sees a known allocation");
+            System.Action tick = () => ui.TickAll(0.016f);
+            int total = 0, ticks = 240;
+            float t0 = RoomClock.Time, tr0 = GameState.TraceRemaining, m0 = GameState.Melt, g0 = GameState.GlitchCountdown;
+            for (int pass = 0; pass < 2; pass++)
             {
-                RoomClock.Time += 0.016f; GameState.TraceRemaining = Mathf.Max(0.1f, GameState.TraceRemaining - 0.016f);
-                GameState.Melt = Mathf.Repeat(GameState.Melt + 0.4f, 100f); GameState.GlitchCountdown = Mathf.Repeat(GameState.GlitchCountdown - 0.016f, 3f);
-                long a = System.GC.GetTotalMemory(false);
-                ui.TickAll(0.016f);
-                long b = System.GC.GetTotalMemory(false);
-                if (b > a) total += b - a;
+                RoomClock.Time = t0; GameState.TraceRemaining = tr0; GameState.Melt = m0; GameState.GlitchCountdown = g0;
+                for (int i = 0; i < ticks; i++)
+                {
+                    RoomClock.Time += 0.016f; GameState.TraceRemaining = Mathf.Max(0.1f, GameState.TraceRemaining - 0.016f);
+                    GameState.Melt = Mathf.Repeat(GameState.Melt + 0.4f, 100f); GameState.GlitchCountdown = Mathf.Repeat(GameState.GlitchCountdown - 0.016f, 3f);
+                    if (pass == 0) tick(); else total += Allocs.Beyond(tick);
+                }
             }
-            Debug.Log("[UI-TEST] managed growth over " + ticks + " HUD ticks: " + total + " bytes");
-            Assert.Less(total / (float)ticks, 64f, "HUD allocates per frame");
+            Debug.Log("[UI-TEST] allocations over " + ticks + " HUD ticks: " + total);
+            Assert.AreEqual(0, total, "HUD allocates per frame");
 
-            // grade-card spin + pause menu + glitch labels while ticking: still no allocations
-            GameEvents.RoomCleared?.Invoke(new RoomResult { room = 2, time = 61f, traces = 1, flips = 7, bestCombo = 4, grade = 'A' });
-            GameState.Paused = true; GameEvents.Paused?.Invoke(true);
-            for (int i = 0; i < 20; i++) ui.TickAll(0.016f);
-            long total2 = 0;
-            for (int i = 0; i < 120; i++)
+            // grade-card spin + pause menu + glitch labels while ticking: still no allocations (warmed by one run of the same)
+            int total2 = 0;
+            for (int pass = 0; pass < 2; pass++)
             {
-                long a = System.GC.GetTotalMemory(false);
-                ui.TickAll(0.016f);
-                long b = System.GC.GetTotalMemory(false);
-                if (b > a) total2 += b - a;
+                GameEvents.RoomCleared?.Invoke(new RoomResult { room = 2, time = 61f, traces = 1, flips = 7, bestCombo = 4, grade = 'A' });
+                GameState.Paused = true; GameEvents.Paused?.Invoke(true);
+                for (int i = 0; i < 140; i++) if (pass == 0 || i < 20) tick(); else total2 += Allocs.Beyond(tick);
             }
-            Debug.Log("[UI-TEST] managed growth over 120 grade/pause ticks: " + total2 + " bytes");
-            Assert.Less(total2 / 120f, 64f, "grade card / pause allocate per frame");
+            Debug.Log("[UI-TEST] allocations over 120 grade/pause ticks: " + total2);
+            Assert.AreEqual(0, total2, "grade card / pause allocate per frame");
             GameState.Paused = false; GameEvents.Paused?.Invoke(false);
 
             GameEvents.Rebooting?.Invoke();

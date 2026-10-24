@@ -24,7 +24,12 @@ namespace Desync.UI
         TitleScreen _title; HudScreen _hud; PauseScreen _pause; LevelSelectScreen _levels; ResultsScreen _results; RecapScreen _recap; GoalsOverlay _goals;
         FinaleScreen _finale; EndingScreen _ending;
         StoryScreen _story; StoryAsk _ask; StoryGuide _guide;
+        SettingsScreen _settings; RebindScreen _rebind; bool _rebindFromSettings, _tabLatch;
         RunMapScreen _map; DraftScreen _draft; MarketScreen _market; CooldownScreen _cooldown; RunResultsScreen _runResults; DeepLayerScreen _deep;
+        ShardArchive _archive; ShardToast _toast; EndingSequence _endingSeq;
+        UnlockTree _unlocks; FlipFxLayer _flipFx;
+        TimeAttackScreen _ta;
+        DailyScreen _daily; DailyTag _dailyTag;
         bool _built, _mapTab, _rebuild, _cbShown;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -74,6 +79,7 @@ namespace Desync.UI
             _ending = Make<EndingScreen>("Ending");
             HudGuards.Create(_root);   // chase edge pulse, under the HUD
             _hud = Make<HudScreen>("Hud");
+            _flipFx = Make<FlipFxLayer>("FlipFx"); _flipFx.Show();   // the flip cosmetic: always on, draws only while an effect plays
             _guide = Make<StoryGuide>("StoryGuide");
             _recap = Make<RecapScreen>("Recap");
             _goals = Make<GoalsOverlay>("Goals");
@@ -85,12 +91,23 @@ namespace Desync.UI
             _map = Make<RunMapScreen>("RunMap");
             _runResults = Make<RunResultsScreen>("RunResults");
             _deep = Make<DeepLayerScreen>("DeepLayer");
+            _unlocks = Make<UnlockTree>("Unlocks");
+            _ta = Make<TimeAttackScreen>("TimeAttack");
+            _daily = Make<DailyScreen>("Daily"); _dailyTag = Make<DailyTag>("DailyTag");
             _title.OnDeep = () => _deep.Show();
             _ask = Make<StoryAsk>("StoryAsk");
             _story = Make<StoryScreen>("Story");
             _title.OnStory = PlayStory; _ask.OnWatch = PlayStory;
             _pause = Make<PauseScreen>("Pause");
             _levels = Make<LevelSelectScreen>("LevelSelect");
+            _endingSeq = Make<EndingSequence>("EndingSequence");
+            _archive = Make<ShardArchive>("ShardArchive");
+            _toast = Make<ShardToast>("ShardToast");
+            _settings = Make<SettingsScreen>("Settings");   // SOUND + ACCESS and KEY BINDINGS sit above the pause menu and the title
+            _rebind = Make<RebindScreen>("Rebind");
+            _settings.OnBack = () => _settings.Hide();
+            _settings.OnKeys = () => { _settings.Hide(); _rebindFromSettings = true; _rebind.Show(); };
+            _rebind.OnBack = () => { _rebind.Hide(); if (_rebindFromSettings) _settings.Show(); _rebindFromSettings = false; };
 
             var sfx = GetComponent<AudioSource>();   // UI-local: results tally ticks (pitch per line); kept across a palette rebuild
             if (!sfx) sfx = gameObject.AddComponent<AudioSource>();
@@ -98,6 +115,7 @@ namespace Desync.UI
             _results.Init(sfx);
             _draft.Init(sfx);
             _story.Init(sfx);
+            A11yUi.PostBuild(_root);   // HUD size, subtitle size, high contrast, remapped-key labels, interface volume
         }
 
         void EnsureEventSystem()
@@ -147,14 +165,30 @@ namespace Desync.UI
             if (m == Mode.Room) _hud.Show(); else _hud.Hide();
             if (m != Mode.Room) { _pause.Hide(); _results.Hide(); _recap.Hide(); _goals.Hide(); _finale.Hide(); }
             if (m == Mode.Title || m == Mode.Ending) HideRun(true);
-            _levels.Hide(); _deep.Hide(); _ask.Hide(); _story.Hide();
+            _levels.Hide(); _deep.Hide(); _ask.Hide(); _story.Hide(); _settings.Hide(); _rebind.Hide();
+            _archive.Hide(); _endingSeq.Hide();
+            _ta.Hide();
+            _unlocks.Hide();
+            _daily.Hide();
             if (m != Mode.Room) _guide.Leave();
         }
 
         /// Title scene entered: the first-time STORY prompt, once per player (StoryAsk remembers the answer in the save).
         internal void TitleEntered() { if (Current == Mode.Title && StoryAsk.ShouldAsk()) _ask.Show(); }
 
+        /// Time-Attack select screen (title menu entry; Flow's TimeAttack.SelectRequested after a room).
+        internal void OpenTimeAttack() => _ta.Show();
+
+        /// Daily Breach + Weekly Ladder hub (title menu entry, wired by the orchestrator): seed, mutators, attempt, leaderboard, START.
+        internal void OpenDaily() => _daily.Show();
+
+        /// Unlock tree (title menu entry, wired by the orchestrator): spend Fragments on exploit pools, starters, Black Market, Time-Attack.
+        internal void OpenUnlocks() => _unlocks.Show();
+
         void PlayStory() { _ask.Hide(); _title.Hide(); _story.Play(); }
+
+        /// Title menu entry: the story shard archive (30 shards by act, endings seen).
+        internal void OpenArchive() => _archive.Show();
 
         void HideRun(bool all)
         {
@@ -192,6 +226,7 @@ namespace Desync.UI
             GameEvents.Hint += _hud.OnHint;
             GameEvents.GameCompleted += OnGameCompleted;
             GameEvents.Flipped += _hud.OnFlipped;
+            GameEvents.Flipped += _flipFx.OnFlipped;
             GameEvents.FlipRejected += _hud.OnFlipRejected;
             GameEvents.TraceStarted += _hud.OnTraceStarted;
             GameEvents.MeltWarning += _hud.OnMeltWarning;
@@ -204,9 +239,12 @@ namespace Desync.UI
             RunEvents.PhaseChanged += OnRunPhase;
             RunEvents.RunEnded += OnRunEnded;
             RunEvents.StartRun += OnRunStart;
+            TimeAttack.SelectRequested += OpenTimeAttack;
             Desync.Enemies.EnemyEvents.TrackerSpawned += _hud.OnTrackerSpawned;
             Desync.Enemies.BossEvents.Phase += _hud.OnBossPhase;
             Desync.Enemies.BossEvents.Ending += _hud.OnBossEnding;
+            Desync.Enemies.BossEvents.Ending += _endingSeq.Arm;
+            ShardEvents.Collected += _toast.OnCollected;
         }
 
         void OnDisable()
@@ -229,6 +267,7 @@ namespace Desync.UI
             GameEvents.Hint -= _hud.OnHint;
             GameEvents.GameCompleted -= OnGameCompleted;
             GameEvents.Flipped -= _hud.OnFlipped;
+            GameEvents.Flipped -= _flipFx.OnFlipped;
             GameEvents.FlipRejected -= _hud.OnFlipRejected;
             GameEvents.TraceStarted -= _hud.OnTraceStarted;
             GameEvents.MeltWarning -= _hud.OnMeltWarning;
@@ -241,9 +280,12 @@ namespace Desync.UI
             RunEvents.PhaseChanged -= OnRunPhase;
             RunEvents.RunEnded -= OnRunEnded;
             RunEvents.StartRun -= OnRunStart;
+            TimeAttack.SelectRequested -= OpenTimeAttack;
             Desync.Enemies.EnemyEvents.TrackerSpawned -= _hud.OnTrackerSpawned;
             Desync.Enemies.BossEvents.Phase -= _hud.OnBossPhase;
             Desync.Enemies.BossEvents.Ending -= _hud.OnBossEnding;
+            Desync.Enemies.BossEvents.Ending -= _endingSeq.Arm;
+            ShardEvents.Collected -= _toast.OnCollected;
         }
 
         void OnStartRequested(int room) { _levels.Hide(); }
@@ -262,9 +304,10 @@ namespace Desync.UI
             _rebuild = false;
             if (!_built) return;
             bool pause = _pause.IsOn, lockLost = _pause.LockLost, run = RunView.Active && RunState.Phase != RunPhase.Room;
+            bool settings = _settings.IsOn, rebind = _rebind.IsOn;
             var phase = RunState.Phase;
             Unsubscribe();
-            foreach (var p in new UIPanel[] { _title, _ending, _hud, _recap, _goals, _finale, _results, _draft, _market, _cooldown, _map, _runResults, _deep, _pause, _levels, _story, _ask, _guide })
+            foreach (var p in new UIPanel[] { _title, _ending, _hud, _recap, _goals, _finale, _results, _draft, _market, _cooldown, _map, _runResults, _deep, _unlocks, _flipFx, _pause, _levels, _story, _ask, _guide, _settings, _rebind, _archive, _toast, _endingSeq })
                 p.Hide();   // panels stop their own tweens in Hide
             var old = Canvas.gameObject;
             old.SetActive(false); Destroy(old);
@@ -275,13 +318,22 @@ namespace Desync.UI
             if (Current == Mode.Room) _guide.Resume();
             if (run) OnRunPhase(phase);
             if (pause) _pause.Show(lockLost);
+            if (settings) _settings.Show();
+            if (rebind) _rebind.Show();
         }
+
+        /// Entry points for the menus: SOUND + ACCESS and KEY BINDINGS (the pause menu has buttons for both; the title wires its own).
+        internal void OpenSettings() { _rebind.Hide(); _rebindFromSettings = false; _settings.Show(); }
+        internal void OpenRebind() { _settings.Hide(); _rebindFromSettings = false; _rebind.Show(); }
+
+        /// Rebuild the canvas at the start of the next frame (high contrast changes what every screen is built with).
+        internal void RequestRebuild() { _rebuild = true; }
 
         void OnLevels(bool on) { if (on) _levels.Show(); else _levels.Hide(); }
 
         void OnPaused(bool paused)
         {
-            if (!paused) { _pause.Hide(); return; }
+            if (!paused) { _pause.Hide(); _settings.Hide(); _rebind.Hide(); return; }
             if (_levels.IsOn) return;   // F2 pauses too; the pause menu appears (via the poll in TickAll) once level select closes
             // Flow raises Paused(true) BEFORE unlocking: a pointer that is already free means the browser took the lock.
             _pause.Show(Cursor.lockState != CursorLockMode.Locked);
@@ -299,7 +351,13 @@ namespace Desync.UI
 
         void OnDeathRecap(DeathInfo d) { if (Current == Mode.Room) { _goals.Hide(); _recap.Show(d); } }
 
-        void OnRoomReport(RoomReport r) { if (r == null) return; _goals.Hide(); _recap.Hide(); _results.Show(r); }
+        void OnRoomReport(RoomReport r)
+        {
+            if (r == null) return;
+            _goals.Hide(); _recap.Hide();
+            if (_endingSeq.PlayArmed(() => _results.Show(r))) { _hud.Hide(); return; }   // an ARCHITECT ending plays before its results
+            _results.Show(r);
+        }
 
         void OnGameCompleted() { _results.Hide(); _finale.Show(); }
 
@@ -345,20 +403,28 @@ namespace Desync.UI
             TickAll(Time.unscaledDeltaTime);
         }
 
+        /// TAB: held, or latched on each press when the accessibility toggle is on. A pause, results or the death card clears the latch.
+        bool TabDown()
+        {
+            if (!A11y.TabToggle || GameState.Paused || _results.IsOn || _recap.IsOn) { _tabLatch = false; return UIKit.GoalsKey.IsPressed(); }
+            if (UIKit.GoalsKey.WasPressedThisFrame()) _tabLatch = !_tabLatch;
+            return _tabLatch;
+        }
+
         internal void TickAll(float dt)
         {
             switch (Current)
             {
                 case Mode.Title:
                     if (_story.IsOn) { _story.Tick(dt); break; }   // the cinematic owns the title camera and keys
-                    _title.Blocked = _deep.IsOn || _ask.IsOn; _title.Tick(dt);
+                    _title.Blocked = _deep.IsOn || _unlocks.IsOn || _ask.IsOn || _settings.IsOn || _rebind.IsOn || _ta.IsOn || _daily.IsOn || _archive.IsOn; _title.Tick(dt);
                     if (_ask.IsOn) _ask.Tick(dt);
                     break;
                 case Mode.Room:
                     if (GameState.Paused && !_pause.IsOn && !_levels.IsOn) OnPaused(true);   // missed the event / level select just closed
                     _hud.Tick(dt);
                     if (_guide.IsOn) _guide.Tick(dt);
-                    bool tab = UIKit.GoalsKey.IsPressed() && !GameState.Paused && !_results.IsOn && !_recap.IsOn;   // TAB (hold)
+                    bool tab = TabDown() && !GameState.Paused && !_results.IsOn && !_recap.IsOn;   // TAB (hold)
                     bool breach = RunView.Active, goals = tab && !breach, map = tab && breach && RunState.Phase == RunPhase.Room;   // BREACH: TAB = run map
                     if (goals != _goals.IsOn) { if (goals) _goals.Show(); else _goals.Hide(); }
                     if (map != _mapTab) { _mapTab = map; if (map) _map.Show(false); else _map.Hide(); }
@@ -366,6 +432,7 @@ namespace Desync.UI
                 case Mode.Ending: _ending.Tick(dt); break;
             }
             if (_pause.IsOn) _pause.Tick(dt);
+            if (_rebind.IsOn) _rebind.Tick(dt);
             if (_recap.IsOn) _recap.Tick(dt);
             if (_results.IsOn) _results.Tick(dt);
             if (_finale.IsOn) _finale.Tick(dt);
@@ -376,6 +443,14 @@ namespace Desync.UI
             if (_cooldown.IsOn) _cooldown.Tick(dt);
             if (_runResults.IsOn) _runResults.Tick(dt);
             if (_deep.IsOn) _deep.Tick(dt);
+            if (_archive.IsOn) _archive.Tick(dt);
+            if (_endingSeq.IsOn) _endingSeq.Tick(dt);
+            if (_toast.IsOn) _toast.Tick(dt);
+            if (_unlocks.IsOn) _unlocks.Tick(dt);
+            _flipFx.Tick(dt);
+            if (_ta.IsOn) _ta.Tick(dt);
+            if (_daily.IsOn) _daily.Tick(dt);
+            _dailyTag.Tick(dt);   // shows itself while a Daily / Weekly Ladder room is played
         }
     }
 }
