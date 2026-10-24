@@ -11,6 +11,8 @@ namespace Desync.Enemies
     /// within GrazeRange of the player without touching raises GameEvents.Grazed(id) when it ends.
     /// Subclasses change where it heads (Target), how fast (Speed) and whether it waits frozen in RENDER instead of
     /// despawning (DespawnsInRender): TrackerHunter (breadcrumb trail), PatrolHunter (AUDITOR pillars).
+    /// Exploits: Null Trail (loses track 0.5 s sooner), Overheat Halo (stunned once near a hot player), Mirror Shard (chases an
+    /// Echo decoy), Crosstalk (derez on touching a decoy), Burning Effigy (derez near a decoy at melt >= 80), Burnout Pulse (DerezWithin).
     public class IceHunter : MonoBehaviour, IResettable
     {
         public const float Radius = 0.35f, Repath = 0.2f, GrazeRange = 1f, GrazeTime = 0.15f;
@@ -29,8 +31,8 @@ namespace Desync.Enemies
 
         public string Id { get; private set; } = Ids[0];
 
-        float _last, _repath, _renderSince = -1f, _graze;
-        bool _shown = true;
+        float _last, _repath, _renderSince = -1f, _graze, _stunUntil = -1f;
+        bool _shown = true, _stunnedThisRoom;
 
         static string[] MakeIds(int n)
         {
@@ -73,6 +75,18 @@ namespace Desync.Enemies
             }
         }
 
+        /// Burnout Pulse: derez every active hunter within `radius` of `center`. The derez window is approximate — respawn
+        /// timing stays with IceVent; `seconds` documents the intended duration.
+        public static void DerezWithin(Vector3 center, float radius, float seconds)
+        {
+            float r2 = radius * radius;
+            for (int i = Active.Count - 1; i >= 0; i--)
+            {
+                var h = Active[i];
+                if (h && (h.transform.position - center).sqrMagnitude <= r2) h.Despawn();
+            }
+        }
+
         public void Spawn(Vector3 pos)
         {
             transform.position = pos;
@@ -91,6 +105,8 @@ namespace Desync.Enemies
             _last = RoomClock.Time;
             _repath = 0f;
             _renderSince = -1f;
+            _stunUntil = -1f;
+            _stunnedThisRoom = false;
             Show(true);
             OnSpawned();
         }
@@ -114,7 +130,8 @@ namespace Desync.Enemies
                 if (_renderSince < 0f) _renderSince = RoomClock.Time;
                 if (chasing) agent.isStopped = true;
                 Show((Time.frameCount & 4) == 0);
-                if (DespawnsInRender && RoomClock.Time - _renderSince >= GameConfig.I.iceDespawn) Despawn();
+                float despawn = GameConfig.I.iceDespawn - (ExploitFlags.NullTrail ? ExploitFlags.NullTrailFaster : 0f);   // Null Trail
+                if (DespawnsInRender && RoomClock.Time - _renderSince >= Mathf.Max(0f, despawn)) Despawn();
                 return;
             }
             if (_renderSince >= 0f) { _renderSince = -1f; Show(true); }
@@ -123,7 +140,22 @@ namespace Desync.Enemies
             if (chasing) agent.isStopped = frozen;
             if (frozen) { if (!GameState.Alive) _graze = 0f; return; }
 
+            // ---- decoy / melt reactions (inert until the decoy pool exists) ----
+            if (ExploitFlags.BurningEffigy && GameState.Melt >= 80f && Decoys.Nearest(transform.position, ExploitFlags.BurningEffigyRadius, out _, out _)) { Despawn(); return; }
+            if (ExploitFlags.Crosstalk && Decoys.Nearest(transform.position, Radius + 0.3f, out _, out _)) { Despawn(); return; }   // touched a decoy
+            if (ExploitFlags.OverheatHalo && !_stunnedThisRoom && GameState.Melt >= 80f && NearPlayer(ExploitFlags.OverheatRadius))
+            {
+                _stunnedThisRoom = true;
+                _stunUntil = RoomClock.Time + ExploitFlags.OverheatStun;
+            }
+            bool stunned = RoomClock.Time < _stunUntil;
+
             bool moving = Target(out Vector3 target);
+            // Mirror Shard: an Echo decoy in range pulls the hunter off the player.
+            if (Decoys.Count > 0 && Decoys.Nearest(transform.position, ExploitFlags.MirrorChaseRange, out Vector3 dpos, out DecoyKind dkind) && dkind == DecoyKind.Echo)
+            { target = dpos; moving = true; }
+            if (stunned) moving = false;
+
             float speed = Speed;
             if (chasing)
             {
@@ -140,7 +172,7 @@ namespace Desync.Enemies
             BodyBlock(chasing);
             Animate(dt);
             Vector3 c = transform.position + Centre;
-            if (EnemyKit.TouchesPlayer(c, Radius))
+            if (!stunned && EnemyKit.TouchesPlayer(c, Radius))   // a stunned hunter is harmless this frame
             {
                 _graze = 0f;   // contact: no graze
                 PlayerRef.LastKillerId = Id;
@@ -149,6 +181,13 @@ namespace Desync.Enemies
             }
             else if (EnemyKit.TouchesPlayer(c, Radius + GrazeRange)) _graze += dt;
             else EndPass();
+        }
+
+        bool NearPlayer(float r)
+        {
+            if (!PlayerRef.Exists) return false;
+            Vector3 d = transform.position - PlayerRef.Position; d.y = 0f;
+            return d.sqrMagnitude <= r * r;
         }
 
         void EndPass()
@@ -176,6 +215,6 @@ namespace Desync.Enemies
             foreach (var r in renderers) if (r) r.enabled = on;
         }
 
-        public void ResetState() => Despawn();
+        public void ResetState() { _stunUntil = -1f; _stunnedThisRoom = false; Despawn(); }
     }
 }

@@ -35,20 +35,26 @@ namespace Desync.Gen
             new Threat(EntityKind.Glitch,      'G', 2, 2, 0, "GLT", false),
             new Threat(EntityKind.Daemon,      'I', 7, 3, 0, "DMN"),
             new Threat(EntityKind.Watcher,     'C', 6, 3, 1, "EYE"),
+            new Threat(EntityKind.Guard,       'P', 4, 1, 2, "GRD"),   // HALCYON officer: walks a patrol loop like a drone
         };
+
+        /// Guards: at most 2 per room (3 in act 3), every waypoint >= GuardSpawnDist m from the spawn, the loop never through
+        /// a terminal's hacking spot (its tile and the 8 around it).
+        internal const float GuardSpawnDist = 6f;
+        internal static int MaxGuards(int act) => act >= 3 ? 3 : 2;
 
         /// Attempts used by the last GenerateRoom on this thread (tests, tuning).
         [ThreadStatic] internal static int LastAttempts;
 
         internal static int Budget(int act, int node, int heat) => 10 + 6 * act + 2 * node + heat / 2;
 
-        internal static RoomSpec Generate(uint seed, int act, int node, int heat, ChunkLibrary lib)
+        internal static RoomSpec Generate(uint seed, int act, int node, int heat, ChunkLibrary lib, HeatPlacement placement)
         {
             act = Math.Max(1, Math.Min(3, act));
             for (int attempt = 0; attempt < Attempts; attempt++)
             {
                 uint s = attempt == 0 ? seed : Rng.Substream(seed, "attempt" + attempt).NextUInt();
-                var room = new Builder(lib, act, node, heat, s).Build();
+                var room = new Builder(lib, act, node, heat, s, placement).Build();
                 if (room == null) continue;
                 room.seed = seed;
                 var v = RoomCheck.Validate(room);
@@ -89,6 +95,7 @@ namespace Desync.Gen
         sealed class Builder
         {
             readonly ChunkLibrary lib; readonly int act, node, heat; readonly uint seed;
+            readonly HeatPlacement hp;
             readonly int gw, gh, cells, W, H;
             readonly List<int> pool = new List<int>();
             bool[] sideOnly, hasT;
@@ -99,9 +106,9 @@ namespace Desync.Gen
             Mulberry32 rng;
             readonly int[] tmp = new int[4], tmp2 = new int[4];
 
-            internal Builder(ChunkLibrary lib, int act, int node, int heat, uint seed)
+            internal Builder(ChunkLibrary lib, int act, int node, int heat, uint seed, HeatPlacement hp)
             {
-                this.lib = lib; this.act = act; this.node = node; this.heat = heat; this.seed = seed;
+                this.lib = lib; this.act = act; this.node = node; this.heat = heat; this.seed = seed; this.hp = hp;
                 gw = act == 1 ? 3 : 4; gh = act == 3 ? 4 : 3; cells = gw * gh; W = gw * N; H = gh * N;
             }
 
@@ -451,12 +458,12 @@ namespace Desync.Gen
             {
                 var r = Rng.Substream(seed, "threats");
                 int start = path[0], end = path[path.Count - 1];
-                int spawn = PickTile(start, 'S'), exit = PickTile(end, 'E');
+                int spawn = PickSpawn(start), exit = PickTile(end, 'E');
                 if (spawn < 0 || exit < 0) return false;
                 for (int i = 0; i < g.Length; i++) if (g[i] == 'S' || g[i] == 'E') g[i] = '.';
                 g[spawn] = 'S'; g[exit] = 'E';
                 int toNext = path[1], fromPrev = path[path.Count - 2];
-                room.entities.Add(Spawn(EntityKind.Spawn, spawn, CellYaw(start, toNext), "SPAWN"));
+                room.entities.Add(Spawn(EntityKind.Spawn, spawn, SpawnYaw(spawn, Dir(start, toNext)), "SPAWN"));
                 room.entities.Add(Spawn(EntityKind.Exit, exit, CellYaw(end, fromPrev), "EXIT"));
 
                 // terminals: T markers on path cells, distinct cells first, visited in path order
@@ -484,12 +491,65 @@ namespace Desync.Gen
 
                 PlaceThreats(r, room, spawn, chosen);
                 PlaceAnomaly(r, room);
+                if (hp.Any) PlaceHeat(room, spawn, chosen);
                 for (int i = 0; i < g.Length; i++)
                     if ((g[i] == 'C' || g[i] == 'P' || g[i] == 'I' || g[i] == 'G') && !used.Contains(i)) g[i] = '.';
                 return true;
             }
 
             float CellYaw(int from, int to) => Dir(from, to) * 90f;
+
+            const int SpawnView = 8;   // tiles (4 m) of clear RENDER view that keep the spawn facing along the solution path
+
+            /// Spawn facing (axis-aligned): along the solution path (`pathDir`, N E S W) when that view is clear for SpawnView
+            /// tiles, else the axis with the longest clear RENDER view (ties keep the path's direction, then N, E, S, W), so the
+            /// first frame never shows a wall a metre away.
+            float SpawnYaw(int t, int pathDir)
+            {
+                int best = pathDir, bestLen = View(t, pathDir);
+                if (bestLen < SpawnView)
+                    for (int d = 0; d < 4; d++)
+                    {
+                        int len = View(t, d);
+                        if (len > bestLen) { best = d; bestLen = len; }
+                    }
+                return best * 90f;
+            }
+
+            /// Spawn tile: an 'S' marker, else the clear floor tile nearest the start cell's centre with SpawnView tiles of straight
+            /// RENDER view along some axis (a chunk's centre can be a render-walled vault: starting inside it shows walls in every
+            /// direction), else PickTile's nearest clear floor.
+            int PickSpawn(int cell)
+            {
+                int r0 = cell / gw * N, c0 = cell % gw * N, best = -1;
+                float bd = float.MaxValue;
+                for (int r = 1; r < N - 1; r++)
+                    for (int c = 1; c < N - 1; c++)
+                    {
+                        int t = (r0 + r) * W + c0 + c;
+                        if (g[t] == 'S') return t;
+                        if (g[t] != '.' || !ClearAround(t)) continue;
+                        float d = (r - 7.5f) * (r - 7.5f) + (c - 7.5f) * (c - 7.5f);
+                        if (d >= bd) continue;
+                        bool open = false;
+                        for (int k = 0; k < 4 && !open; k++) open = View(t, k) >= SpawnView;
+                        if (open) { bd = d; best = t; }
+                    }
+                return best >= 0 ? best : PickTile(cell, 'S');
+            }
+
+            /// Walkable RENDER tiles in a straight line from t towards d (N E S W), at most 24.
+            int View(int t, int d)
+            {
+                int r = t / W, c = t % W, len = 0;
+                while (len < 24)
+                {
+                    r += DR[d]; c += DC[d];
+                    if (r < 0 || r >= H || c < 0 || c >= W || !Walkable(r * W + c)) break;
+                    len++;
+                }
+                return len;
+            }
 
             readonly HashSet<int> used = new HashSet<int>();
 
@@ -499,6 +559,7 @@ namespace Desync.Gen
                 var spent = new int[cells];
                 var kinds = new List<EntityKind>();
                 var counters = new Dictionary<string, int>();
+                int guards = 0;
 
                 // slots: every C / I / G marker, plus one patrol per cell holding >= 2 P markers
                 var slots = new List<int>();
@@ -537,11 +598,13 @@ namespace Desync.Gen
                         if ((marker == 'I' || marker == 'G') && Dist(t, spawn) < RoomCheck.IceMinDist + 0.5f) continue;
                         if (marker == 'G' && NearAny(t, terminals, 2.5f)) continue;   // no forced flip mid-hack
                         if (marker == 'C' && SeesAny(t, yaw, th.kind, spawn, terminals)) continue;
+                        if (th.kind == EntityKind.Guard && (guards >= MaxGuards(act) || !GuardLoop(patrols[cell], spawn, terminals))) continue;
                         options.Add(th);
                     }
                     if (options.Count == 0) continue;
                     var pick = options[r.Range(0, options.Count)];
                     budget -= pick.cost; spent[cell] += pick.cost;
+                    if (pick.kind == EntityKind.Guard) guards++;
                     if (!kinds.Contains(pick.kind)) kinds.Add(pick.kind);
                     counters.TryGetValue(pick.prefix, out int n);
                     counters[pick.prefix] = ++n;
@@ -549,6 +612,28 @@ namespace Desync.Gen
                     if (marker == 'P') foreach (int p in patrols[cell]) used.Add(p);
                     else used.Add(t);
                 }
+            }
+
+            /// A guard's patrol loop (waypoints in loop order): every waypoint >= GuardSpawnDist from the spawn, and no waypoint or
+            /// tile on a leg inside a terminal's hacking spot (the terminal tile and its 8 neighbours).
+            bool GuardLoop(List<int> ps, int spawn, List<int> terminals)
+            {
+                for (int i = 0; i < ps.Count; i++)
+                {
+                    if (Dist(ps[i], spawn) < GuardSpawnDist) return false;
+                    int a = ps[i], b = ps[(i + 1) % ps.Count];
+                    int r0 = a / W, c0 = a % W, r1 = b / W, c1 = b % W;
+                    int dr = Math.Abs(r1 - r0), dc = Math.Abs(c1 - c0), sr = r0 < r1 ? 1 : -1, sc = c0 < c1 ? 1 : -1, err = dc - dr;
+                    while (true)   // Bresenham, both ends included
+                    {
+                        foreach (int t in terminals) if (Math.Abs(t / W - r0) <= 1 && Math.Abs(t % W - c0) <= 1) return false;
+                        if (r0 == r1 && c0 == c1) break;
+                        int e2 = 2 * err;
+                        if (e2 > -dr) { err -= dr; c0 += sc; }
+                        if (e2 < dc) { err += dc; r0 += sr; }
+                    }
+                }
+                return true;
             }
 
             bool NearAny(int t, List<int> tiles, float metres)
@@ -638,6 +723,94 @@ namespace Desync.Gen
                     int mid = grp[grp.Count / 2];
                     room.entities.Add(Spawn(EntityKind.AnomalyWall, mid, OpenYaw(mid, 2), "ANM-1"));
                 }
+            }
+
+            // ---------- Deep Layer heat placement (unbudgeted; own substream; same marker and safety rules as above) ----------
+
+            void PlaceHeat(RoomSpec room, int spawn, List<int> terminals)
+            {
+                var r = Rng.Substream(seed, "heat");
+                var es = room.entities;
+
+                // Tracker Swarm: a share of the ICE hunters become Tracker ICE on the same vent
+                if (hp.trackerShare > 0f)
+                {
+                    var hunters = new List<int>();
+                    for (int i = 0; i < es.Count; i++) if (es[i].kind == EntityKind.IceVent) hunters.Add(i);
+                    Shuffle(r, hunters);
+                    for (int k = 0, n = Half(hunters.Count * hp.trackerShare); k < n && k < hunters.Count; k++)
+                    {
+                        var e = es[hunters[k]];
+                        e.kind = EntityKind.TrackerIce;
+                        es[hunters[k]] = e;
+                    }
+                }
+
+                // Double Patrol: guard drones on patrol loops nothing walks yet
+                if (hp.extraDrones > 0)
+                {
+                    var loops = new List<int>[cells];
+                    for (int t = 0; t < g.Length; t++)
+                        if (g[t] == 'P' && !used.Contains(t)) (loops[CellOf(t)] ??= new List<int>()).Add(t);
+                    var free = new List<int>();
+                    for (int k = 0; k < cells; k++) if (loops[k] != null && loops[k].Count >= 2) free.Add(k);
+                    Shuffle(r, free);
+                    int added = 0;
+                    foreach (int k in free)
+                    {
+                        if (added == hp.extraDrones) break;
+                        var pts = Loop(loops[k], out int t);
+                        if (pts == null) continue;
+                        es.Add(Spawn(EntityKind.Drone, t, YawTo(loops[k][0], loops[k][1]), "DRN-" + NextId(es, "DRN"), pts));
+                        foreach (int p in loops[k]) used.Add(p);
+                        added++;
+                    }
+                }
+
+                // Unstable Reality: more glitch zones, never near the spawn or a terminal
+                if (hp.glitchBonus > 0f)
+                {
+                    int placed = 0;
+                    foreach (var e in es) if (e.kind == EntityKind.Glitch) placed++;
+                    var spots = new List<int>();
+                    for (int t = 0; t < g.Length; t++)
+                        if (g[t] == 'G' && !used.Contains(t) && Dist(t, spawn) >= RoomCheck.IceMinDist + 0.5f && !NearAny(t, terminals, 2.5f)) spots.Add(t);
+                    Shuffle(r, spots);
+                    for (int k = 0, n = Half(placed * hp.glitchBonus); k < n && k < spots.Count; k++)
+                    {
+                        es.Add(Spawn(EntityKind.Glitch, spots[k], 0f, "GLT-" + NextId(es, "GLT")));
+                        used.Add(spots[k]);
+                    }
+                }
+
+                // Gaze Everywhere: an act 3 room without a Watcher Eye gets one on a free camera mount that sees no spawn/terminal
+                if (hp.watchers && act == 3 && !es.Exists(e => e.kind == EntityKind.Watcher))
+                {
+                    var mounts = new List<int>();
+                    for (int t = 0; t < g.Length; t++) if (g[t] == 'C' && !used.Contains(t)) mounts.Add(t);
+                    Shuffle(r, mounts);
+                    foreach (int t in mounts)
+                    {
+                        float yaw = OpenYaw(t, 1);
+                        if (SeesAny(t, yaw, EntityKind.Watcher, spawn, terminals)) continue;
+                        es.Add(Spawn(EntityKind.Watcher, t, yaw, "EYE-" + NextId(es, "EYE")));
+                        used.Add(t);
+                        break;
+                    }
+                }
+            }
+
+            /// x rounded half up (2.5 -> 3, 0.5 -> 1).
+            static int Half(float x) => (int)Math.Floor(x + 0.5f);
+
+            /// 1 + the highest number among ids "<prefix>-n".
+            static int NextId(List<EntitySpawn> es, string prefix)
+            {
+                int n = 0;
+                foreach (var e in es)
+                    if (e.id != null && e.id.Length > prefix.Length + 1 && e.id.StartsWith(prefix, StringComparison.Ordinal) && e.id[prefix.Length] == '-'
+                        && int.TryParse(e.id.Substring(prefix.Length + 1), out int k)) n = Math.Max(n, k);
+                return n + 1;
             }
 
             static void Shuffle(Mulberry32 r, List<int> list)

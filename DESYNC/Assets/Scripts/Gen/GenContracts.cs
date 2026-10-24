@@ -66,7 +66,7 @@ namespace Desync.Gen
     }
 
     public enum EntityKind { Spawn, Exit, Terminal, CameraFixed, CameraSweep, Drone, IceVent, TrackerIce, Glitch, HijackPad,
-                             Lantern, Sentinel, Splitter, Daemon, Watcher, AnomalyWall, PuppetString }
+                             Lantern, Sentinel, Splitter, Daemon, Watcher, AnomalyWall, PuppetString, Guard }
 
     public struct EntitySpawn
     {
@@ -100,13 +100,27 @@ namespace Desync.Gen
         public List<string> reasons;                // e.g. "ice_near_entry", "unreachable_exit"
     }
 
+    /// Deep Layer heat mutators that change what a room holds, placed on top of the budgeted threats (the mutator IS the
+    /// extra threat, so it is not budgeted). Default = off. Placement draws from its own substream ("heat"), so a room
+    /// with placement off is identical to one generated without it.
+    public struct HeatPlacement
+    {
+        public int extraDrones;       // Double Patrol: guard drones added on free patrol loops (cells with >= 2 unused 'P')
+        public float trackerShare;    // Tracker Swarm: share of ICE hunters turned into Tracker ICE (rounded half up)
+        public float glitchBonus;     // Unstable Reality: extra glitch zones, as a share of the ones placed (rounded half up)
+        public bool watchers;         // Gaze Everywhere: every act 3 room holds at least one Watcher Eye
+        public bool Any => extraDrones > 0 || trackerShare > 0f || glitchBonus > 0f || watchers;
+    }
+
     public static class Generator
     {
         /// 3 acts; per act 4 rows of 2-3 lane nodes + 1 boss; every node reachable; act 1 node 0 always Infil.
         public static RunGraph GenerateRun(uint seed, int heat) => RunGen.Generate(seed, heat);
         /// Spelunky-style solution path over the act grid (A1 3x3, A2 4x3, A3 4x4), socket matching, threat budget
         /// B = 10 + 6*act + 2*node + heatBonus, mirror p 0.5, validate, reseed up to 20 times, then fall back.
-        public static RoomSpec GenerateRoom(uint seed, int act, int node, int heat, ChunkLibrary lib) => RoomGen.Generate(seed, act, node, heat, lib);
+        public static RoomSpec GenerateRoom(uint seed, int act, int node, int heat, ChunkLibrary lib) => RoomGen.Generate(seed, act, node, heat, lib, default);
+        /// The same room with Deep Layer heat placement (HeatPlacement) applied before validation.
+        public static RoomSpec GenerateRoom(uint seed, int act, int node, int heat, ChunkLibrary lib, HeatPlacement placement) => RoomGen.Generate(seed, act, node, heat, lib, placement);
         public static Validation Validate(RoomSpec room) => RoomCheck.Validate(room);
     }
 }

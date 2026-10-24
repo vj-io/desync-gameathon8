@@ -22,6 +22,12 @@ namespace Desync.Enemies
         public bool Active { get; private set; }
 
         float _end, _angle, _last;
+        bool _untilFlip;   // overclocked_puppet: no timer, ends on the next player flip
+
+        void OnEnable() => GameEvents.Flipped += OnFlipped;
+
+        /// Overclocked Puppet: the hijack holds until the player flips (then the drone reverts, as on a timer expiry).
+        void OnFlipped(bool _) { if (Active && _untilFlip) End(true); }
 
         public void Begin()
         {
@@ -29,7 +35,9 @@ namespace Desync.Enemies
             Active = true;
             Current = this;
             _last = RoomClock.Time;
-            _end = RoomClock.Time + GameConfig.I.hijackDuration;
+            _untilFlip = ExploitFlags.OverclockedPuppet;
+            float extra = ExploitFlags.PuppetThread ? ExploitFlags.PuppetThreadExtra : 0f;   // Puppet Thread: +4 s
+            _end = _untilFlip ? float.MaxValue : RoomClock.Time + GameConfig.I.hijackDuration + extra;
             Vector3 d = transform.position - PlayerRef.Position;
             _angle = Mathf.Atan2(d.z, d.x);
             Apply(true);
@@ -43,7 +51,7 @@ namespace Desync.Enemies
             if (!Active) return;
             float dt = EnemyKit.Step(ref _last);
             float left = _end - RoomClock.Time;
-            GameState.HijackRemaining = Mathf.Max(0f, left);
+            GameState.HijackRemaining = _untilFlip ? GameConfig.I.hijackDuration : Mathf.Max(0f, left);
             if (left <= 0f || !PlayerRef.Exists) { End(true); return; }
             if (GameState.Cinematic) return;
             _angle += dt * 2f * Mathf.PI / OrbitPeriod;
@@ -68,6 +76,7 @@ namespace Desync.Enemies
         void End(bool raise)
         {
             Active = false;
+            _untilFlip = false;
             if (Current == this) Current = null;
             Apply(false);
             GameState.HijackActive = false;
@@ -92,7 +101,7 @@ namespace Desync.Enemies
             if (cone) cone.Jammer = on;
         }
 
-        void OnDisable() { if (Current == this) Current = null; }
+        void OnDisable() { GameEvents.Flipped -= OnFlipped; if (Current == this) Current = null; }
 
         public void ResetState() { if (Active) End(false); }
     }

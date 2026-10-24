@@ -117,7 +117,7 @@ public class GenRulesTests
                     char ch = room.tiles[(int)(-e.z / 0.5f)][(int)(e.x / 0.5f)];
                     char want = e.kind == EntityKind.Spawn ? 'S' : e.kind == EntityKind.Exit ? 'E' : e.kind == EntityKind.Terminal ? 'T'
                         : e.kind == EntityKind.AnomalyWall ? 'A' : e.kind == EntityKind.Glitch ? 'G'
-                        : e.kind == EntityKind.Drone || e.kind == EntityKind.Lantern ? 'P'
+                        : e.kind == EntityKind.Drone || e.kind == EntityKind.Lantern || e.kind == EntityKind.Guard ? 'P'
                         : e.kind == EntityKind.CameraFixed || e.kind == EntityKind.CameraSweep || e.kind == EntityKind.Watcher ? 'C' : 'I';
                     Assert.AreEqual(want, ch, $"{e.id} seed {seed}");
                 }

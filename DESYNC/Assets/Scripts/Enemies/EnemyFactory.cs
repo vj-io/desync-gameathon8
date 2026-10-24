@@ -12,7 +12,7 @@ namespace Desync.Enemies
     /// ORIENTATION: every `yaw` is the direction the object FACES (+Z): a camera looks along it; terminal/pad screens,
     /// billboards and the exit label are read by a player standing on that side, looking back along -yaw.
     /// AssetLib models (model.*) are fitted by size and assumed to face +Z; null keys fall back to procedural meshes.
-    public static class EnemyFactory
+    public static partial class EnemyFactory
     {
         public const float FaceHeight = 7f, FaceSize = 5f, ShardScale = 1.5f;
 
@@ -73,7 +73,7 @@ namespace Desync.Enemies
                 EnemyKit.MeshObj("Mount", root.transform, m.ToMesh("CameraMount"), world);
             }
             var eye = EnemyKit.Child("Eye", tilt, new Vector3(0f, 0f, lensZ));
-            AddCone(eye, coneAngle, range, true, false);
+            sweep.cone = AddCone(eye, coneAngle, range, true, false);
 
             sweep.pivot = pivot;
             sweep.phase = phase;
@@ -92,12 +92,14 @@ namespace Desync.Enemies
         public static GameObject Drone(Transform parent, Vector3[] waypoints, float phase, float speed = 3f, float coneRange = 10f, float coneAngle = 45f) =>
             BuildDrone(parent, waypoints, phase, speed, coneAngle, coneRange);
 
-        static GameObject BuildDrone(Transform parent, Vector3[] waypoints, float phase, float speed, float coneAngle, float coneRange)
+        /// lantern = Lantern Drone: lamp body, no hijack link, its cone on a Beam pivot that LanternBeam spins (see Lantern()).
+        static GameObject BuildDrone(Transform parent, Vector3[] waypoints, float phase, float speed, float coneAngle, float coneRange,
+                                     bool lantern = false)
         {
             var c = GameConfig.I;
             var wps = waypoints != null && waypoints.Length > 0 ? (Vector3[])waypoints.Clone()
                                                                  : new[] { parent ? parent.position : Vector3.zero };
-            var root = EnemyKit.Root("Drone", parent, Vector3.zero, 0f);
+            var root = EnemyKit.Root(lantern ? "LanternDrone" : "Drone", parent, Vector3.zero, 0f);
             EnsureTraceSystem(root.transform);
             root.layer = GameLayers.Drone;
             var rb = root.AddComponent<Rigidbody>();
@@ -109,7 +111,7 @@ namespace Desync.Enemies
             var body = EnemyKit.Child("Body", root.transform, Vector3.zero);
             var droneMat = EnemyKit.Mat("mat.drone", EnemyKit.Navy);
             Renderer[] bodyRenderers;
-            var model = EnemyKit.Model("model.drone", body, 0.95f, droneMat, false, out _);
+            var model = lantern ? null : EnemyKit.Model("model.drone", body, 0.95f, droneMat, false, out _);
             if (model) bodyRenderers = model.GetComponentsInChildren<Renderer>(true);
             else
             {
@@ -117,16 +119,25 @@ namespace Desync.Enemies
                 // light vertex colours: mat.drone / mat.hijacked multiply them, so the hijack tint reads
                 Color hull = new Color(0.75f, 0.75f, 0.8f), dark = new Color(0.45f, 0.45f, 0.5f);
                 b.Prism(Vector3.zero, 6, 0.42f, 0.2f, hull, Magenta);                     // hex hull
-                b.Prism(new Vector3(0f, 0.15f, 0f), 6, 0.22f, 0.1f, dark, Cyan, 30f);     // dome
-                b.Prism(new Vector3(0f, -0.13f, 0f), 6, 0.3f, 0.06f, dark, hull);         // belly
-                b.Box(new Vector3(0f, -0.02f, 0.4f), new Vector3(0.18f, 0.1f, 0.08f), c.danger);         // eye
-                bodyRenderers = new Renderer[] { EnemyKit.MeshObj("Hull", body, b.ToMesh("DroneHull"), droneMat) };
+                if (lantern)
+                {
+                    b.Prism(new Vector3(0f, -0.3f, 0f), 6, 0.16f, 0.36f, Cyan, dark, 30f);   // hanging lamp
+                    b.Prism(new Vector3(0f, 0.2f, 0f), 3, 0.08f, 0.2f, dark, Magenta);      // mast
+                }
+                else
+                {
+                    b.Prism(new Vector3(0f, 0.15f, 0f), 6, 0.22f, 0.1f, dark, Cyan, 30f);     // dome
+                    b.Prism(new Vector3(0f, -0.13f, 0f), 6, 0.3f, 0.06f, dark, hull);         // belly
+                    b.Box(new Vector3(0f, -0.02f, 0.4f), new Vector3(0.18f, 0.1f, 0.08f), c.danger);         // eye
+                }
+                bodyRenderers = new Renderer[] { EnemyKit.MeshObj("Hull", body, b.ToMesh(lantern ? "LanternHull" : "DroneHull"), droneMat) };
             }
-            var eye = EnemyKit.Child("Eye", root.transform, new Vector3(0f, 0f, 0.44f));
-            eye.localRotation = Quaternion.Euler(12f, 0f, 0f);
+            var beam = lantern ? EnemyKit.Child("Beam", root.transform, new Vector3(0f, -0.3f, 0f)) : root.transform;
+            var eye = EnemyKit.Child("Eye", beam, new Vector3(0f, 0f, lantern ? 0.2f : 0.44f));
+            eye.localRotation = Quaternion.Euler(lantern ? LanternBeam.Pitch : 12f, 0f, 0f);
             var cone = AddCone(eye, coneAngle, coneRange, false, false);
 
-            var hijack = root.AddComponent<HijackedDrone>();
+            var hijack = lantern ? null : root.AddComponent<HijackedDrone>();
             var patrol = root.AddComponent<DronePatrol>();
             patrol.waypoints = wps;
             patrol.phase = phase;
@@ -135,12 +146,21 @@ namespace Desync.Enemies
             patrol.body = body;
             patrol.colliders = new Collider[] { col };
             patrol.hijack = hijack;
-            hijack.patrol = patrol;
-            hijack.cone = cone;
-            hijack.bodyRenderers = bodyRenderers;
-            hijack.normalMat = droneMat;
-            hijack.hijackMat = EnemyKit.Mat("mat.hijacked", Cyan);
-            hijack.colliders = new Collider[] { col };
+            if (hijack)
+            {
+                hijack.patrol = patrol;
+                hijack.cone = cone;
+                hijack.bodyRenderers = bodyRenderers;
+                hijack.normalMat = droneMat;
+                hijack.hijackMat = EnemyKit.Mat("mat.hijacked", Cyan);
+                hijack.colliders = new Collider[] { col };
+            }
+            else
+            {
+                var spin = root.AddComponent<LanternBeam>();
+                spin.beam = beam;
+                spin.phase = phase;
+            }
 
             float d = phase * patrol.Speed;
             Vector3 p = DronePatrol.Evaluate(wps, d), ahead = DronePatrol.Evaluate(wps, d + 0.1f) - p;
@@ -198,10 +218,11 @@ namespace Desync.Enemies
             return glow;
         }
 
-        static T BuildHunter<T>(Transform parent, int i, bool tracker) where T : IceHunter
+        /// shape (optional) replaces the hunter crystal (Splitter ICE and its minis); tracker = the Tracker ICE needle.
+        static T BuildHunter<T>(Transform parent, int i, bool tracker, Mesh shape = null) where T : IceHunter
         {
             var c = GameConfig.I;
-            var go = new GameObject((tracker ? "TRACKER_" : "ICE_") + i);
+            var go = new GameObject((tracker ? "TRACKER_" : shape ? shape.name + "_" : "ICE_") + i);
             go.SetActive(false);
             go.transform.SetParent(parent, false);
             go.layer = GameLayers.Ice;
@@ -219,7 +240,8 @@ namespace Desync.Enemies
 
             var visual = EnemyKit.Child("Crystal", go.transform, new Vector3(0f, 0.12f, 0f));
             var iceMat = EnemyKit.Mat("mat.ice", c.danger);
-            if (tracker)
+            if (shape) EnemyKit.MeshObj("Shard", visual, shape, iceMat);
+            else if (tracker)
             {
                 var b = new MeshBuilder();
                 uint s = 0x7AC4u;
@@ -633,5 +655,23 @@ namespace Desync.Enemies
                     chars[i] = noise[(int)(MeshBuilder.Rand(ref seed) * noise.Length) % noise.Length];
             return new string(chars);
         }
+
+        // Bosses (M3) ------------------------------------------------------------------------------------------------------
+
+        /// COMPILER boss (Act 2) at the arena centre (floor level; room space Compiler.ArenaCenter of Content/bosses/compiler.json):
+        /// the core scanner ring, the two swap-wall groups around the 4 node cells, two ICE on the core loop, the compiled
+        /// Splitter ICE pool, the P3 void panels and the layer exit. Terminals, spawn and static geometry come from the arena's RoomSpec;
+        /// its exit portal is switched off. Offsets follow the parent's yaw.
+        public static GameObject Compiler(Transform parent, Vector3 center) => global::Desync.Enemies.Compiler.Build(parent, center);
+
+        /// ARCHITECT boss (Act 3) at its face block (floor level; room space ArchitectBoss.ArenaCenter of
+        /// Content/bosses/architect.json): face, gaze, puppet strings to every Terminal already under `parent`, the final
+        /// string and the two P2 Daemons. Build it after the arena's terminals; its exit portal is switched off.
+        public static GameObject ArchitectBoss(Transform parent, Vector3 center) => global::Desync.Enemies.ArchitectBoss.Build(parent, center);
+
+        internal static T BossHunter<T>(Transform parent, int i, bool tracker) where T : IceHunter => BuildHunter<T>(parent, i, tracker);
+        internal static VisionCone BossCone(Transform eye, float angle, float range) => AddCone(eye, angle, range, false, false);
+        internal static void BossTraceSystem(Transform anyInRoom) => EnsureTraceSystem(anyInRoom);
+        // end Bosses (M3)
     }
 }

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Desync
 {
-    public enum DeathCause { Ice, Melt, Alarm, Drone, Architect, TraceTimer, Glitch }
+    public enum DeathCause { Ice, Melt, Alarm, Drone, Architect, TraceTimer, Glitch, Guard }
 
     public struct RoomResult
     {

@@ -7,6 +7,8 @@ namespace Desync.Enemies
     ///   FLICKER  a forced flip every EnemyFlags.FlickerPeriod s, FlickerTelegraph s of screen tear before each.
     ///   GAZE     an Architect-style gaze (VisionCone, both layers) hung GazeHeight above the room's floor centre turns a full
     ///            circle in GazeSweep s once every EnemyFlags.GazePeriod s; hidden and harmless in between.
+    ///   BLACKOUT every Light and the ambient colour at EnemyFlags.LightScale of their own level (static, no host needed;
+    ///            undone when a later refresh finds the flag gone). Lights made later in the room call Dim themselves.
     /// Idle while no room clock runs (title, death recap, reboot).
     public class RoomHazards : MonoBehaviour
     {
@@ -19,17 +21,44 @@ namespace Desync.Enemies
         VisionCone _gaze;
         RoomInfo _gazeRoom;
 
+        static bool _dimmed;
+        static Color _ambient;
+
         internal static void Configure()
         {
             if (!Application.isPlaying) return;
-            if (!_i)
+            if (!_i && (EnemyFlags.Flicker || EnemyFlags.Gaze))
             {
-                if (!EnemyFlags.Flicker && !EnemyFlags.Gaze) return;
                 var go = new GameObject("RoomHazards");
                 DontDestroyOnLoad(go);
                 _i = go.AddComponent<RoomHazards>();
             }
-            _i.Apply();
+            if (_i) _i.Apply();
+            Blackout();   // last: a gaze light built just above dims too
+        }
+
+        static void Blackout()
+        {
+            float k = EnemyFlags.LightScale;
+            if (k >= 1f && !_dimmed) return;
+            foreach (var l in FindObjectsByType<Light>(FindObjectsInactive.Include)) Dim(l);
+            if (!_dimmed) _ambient = RenderSettings.ambientLight;
+            RenderSettings.ambientLight = _ambient * k;
+            _dimmed = k < 1f;
+        }
+
+        /// One light at this room's LightScale of its own intensity (LightBase keeps it).
+        internal static void Dim(Light l)
+        {
+            if (!l) return;
+            var b = l.GetComponent<LightBase>();
+            if (!b)
+            {
+                if (!EnemyFlags.Blackout) return;
+                b = l.gameObject.AddComponent<LightBase>();
+                b.intensity = l.intensity;
+            }
+            l.intensity = b.intensity * EnemyFlags.LightScale;
         }
 
         void Apply()

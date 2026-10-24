@@ -9,12 +9,15 @@ namespace Desync.Flow
     /// Live room score. Logs every RunEvent of the current attempt and feeds it through Rules.ScoreTally, the same code
     /// Scoring.ScoreFromEvents replays, so the log alone reproduces GameState.Score/Chain/Multiplier. Decides clean flips,
     /// chain breaks, GRAZE and REDLINE from GameEvents; RoomManager calls Begin (room start / REBOOT) and Finish (exit).
+    /// Also the home of the chain exploits (Echo Flip, Clock Skew, Phase Memory, Spectral Fever) and flip-triggered combat
+    /// exploits (Afterimage, Poltergeist, Mirror Shard decoys; Burnout Pulse ICE derez), since those key off flips and chain.
     [DefaultExecutionOrder(-90)]
     public class ScoreKeeper : MonoBehaviour
     {
         /// A flip is clean when no Spotted / TraceStarted / FlipRejected / death follows within this many room seconds.
         public const float CleanWindow = 1f;
         public const float RedlineSlowSeconds = 0.35f, RedlineTimeScale = 0.5f;
+        public const float BurnoutRange = 6f, BurnoutDerez = 3f, BurnoutCooldown = 20f;   // burnout_pulse
 
         public static ScoreKeeper I;
 
@@ -29,6 +32,9 @@ namespace Desync.Flow
         float lastClean;
         bool live;
         string roomId;
+        int echoCount;        // echo_flip: clean flips so far this room
+        bool phaseUsed;       // phase_memory: the room's one forgiven break is spent
+        float burnoutReady;   // burnout_pulse: room time the cooldown next allows a pulse
 
         static readonly string[] RoomIds = { "r1", "r2", "r3", "r4", "r5", "r6" };
         public static string RoomId(int index) => index >= 0 && index < RoomIds.Length ? RoomIds[index] : "r" + (index + 1);
@@ -45,6 +51,7 @@ namespace Desync.Flow
             GameEvents.HackFinished += OnHackFinished;
             GameEvents.Grazed += OnGrazed;
             GameEvents.DeathRecap += OnDeath;
+            Enemies.EnemyEvents.PuppetString += OnPuppetString;
         }
 
         void OnDisable()
@@ -57,6 +64,7 @@ namespace Desync.Flow
             GameEvents.HackFinished -= OnHackFinished;
             GameEvents.Grazed -= OnGrazed;
             GameEvents.DeathRecap -= OnDeath;
+            Enemies.EnemyEvents.PuppetString -= OnPuppetString;
         }
 
         /// Fresh attempt of room `index` (negative: no room, stop scoring).
@@ -69,6 +77,9 @@ namespace Desync.Flow
             tally.Reset();
             pendHead = pendCount = 0;
             lastClean = 0f;
+            echoCount = 0;
+            phaseUsed = false;
+            burnoutReady = 0f;
             PeakMultiplier = 1f;
             BestChain = 0;
             live = id != null;
@@ -93,7 +104,11 @@ namespace Desync.Flow
             if (!live) return;
             float now = RoomClock.Time;
             while (pendCount > 0 && now - pending[pendHead] >= CleanWindow) CreditOldest();
-            if (tally.Chain > 0 && pendCount == 0 && now - lastClean >= GameState.Mods.ChainWindow) Add(EventType.ChainBreak);
+            if (tally.Chain > 0 && pendCount == 0 && now - lastClean >= GameState.Mods.ChainWindow)
+            {
+                if (ForgiveBreak()) lastClean = now;   // Phase Memory restarts the window instead of breaking the chain
+                else Add(EventType.ChainBreak);
+            }
         }
 
         void CreditOldest()
@@ -101,18 +116,19 @@ namespace Desync.Flow
             pendHead = (pendHead + 1) % pending.Length;
             pendCount--;
             lastClean = RoomClock.Time;
-            Add(EventType.CleanFlip);
+            StepChain(true);
         }
 
         void VoidPending() => pendCount = 0;
 
         void OnFlipped(bool toSource)
         {
-            if (!live) return;
+            if (!live) { FlipExploits(toSource); return; }   // outside scoring (e.g. finale) decoys/burnout still fire
             Add(EventType.Flip);
             if (!toSource && Add(EventType.Exit, melt: GameState.Melt) > 0) Redline();   // FlipController: melt before the flip cost
             if (pendCount == pending.Length) { pendHead = (pendHead + 1) % pending.Length; pendCount--; }
             pending[(pendHead + pendCount++) % pending.Length] = RoomClock.Time;
+            FlipExploits(toSource);
         }
 
         void OnSpotted(Vector3 _) => VoidPending();
@@ -123,16 +139,17 @@ namespace Desync.Flow
             if (live) Add(EventType.Detected);
         }
 
-        void OnHackFailed() { if (live) Add(EventType.ChainBreak); }
+        void OnHackFailed() { if (live && !ForgiveBreak()) Add(EventType.ChainBreak); }
         void OnHackFinished(bool perfect)
         {
             if (!live) return;
             Add(perfect ? EventType.HackPerfect : EventType.Hack);
             // Packet Loss: the hack is a chain step. CleanFlip is the only event that steps the chain, so it is logged as one
             // (the replay then agrees with the live score).
-            if (Player.RunPerks.PacketLoss) { lastClean = RoomClock.Time; Add(EventType.CleanFlip); }
+            if (Player.RunPerks.PacketLoss) { lastClean = RoomClock.Time; StepChain(true); }
         }
         void OnGrazed(string ice) { if (live) Add(EventType.Graze, ice); }
+        void OnPuppetString(string id) { if (live) Add(EventType.PuppetString); }   // PUPPET_STRING 400 x multiplier (Scoring)
 
         void OnDeath(DeathInfo _)
         {
@@ -140,6 +157,48 @@ namespace Desync.Flow
             if (!live) return;
             Add(EventType.Death);
             live = false;   // nothing scores during the recap; REBOOT begins a new attempt
+        }
+
+        // ---------- exploits ----------
+
+        /// A chain step, counted twice at melt >= 80 under Spectral Fever (an extra CleanFlip keeps replay == live).
+        void StepChain(bool allowDouble)
+        {
+            LogCleanFlip();
+            if (allowDouble && Player.RunPerks.SpectralFever && GameState.Melt >= 80f) LogCleanFlip();
+        }
+
+        void LogCleanFlip()
+        {
+            Add(EventType.CleanFlip);
+            if (Player.RunPerks.ClockSkewMelt > 0f) Player.RunPerks.MeltAdjust?.Invoke(-Player.RunPerks.ClockSkewMelt);   // Clock Skew
+            int iv = Player.RunPerks.EchoFlipInterval;
+            if (iv > 0 && ++echoCount % iv == 0) Player.RunPerks.MeltAdjust?.Invoke(-Player.RunPerks.EchoFlipRefund);       // Echo Flip
+        }
+
+        /// Phase Memory: forgive the first chain break per room (timeout or wrong hack arrow). Only consumed when a chain exists.
+        bool ForgiveBreak()
+        {
+            if (!Player.RunPerks.PhaseMemory || phaseUsed || tally.Chain <= 0) return false;
+            phaseUsed = true;
+            return true;
+        }
+
+        /// Flip-keyed combat: decoys (Afterimage/Poltergeist silhouettes, Mirror Shard echo) and the Burnout Pulse ICE derez.
+        /// Decoy spawns are inert until the enemies decoy pool is implemented; spawned on the flip (position-correct) rather than
+        /// on the 1 s-late clean confirmation. Zero allocations (Vector3 / float by value).
+        void FlipExploits(bool toSource)
+        {
+            Vector3 p = PlayerRef.Exists ? PlayerRef.Position : Vector3.zero;
+            if (Player.RunPerks.AfterimageLife > 0f) Enemies.Decoys.Spawn(p, Player.RunPerks.AfterimageLife, Enemies.DecoyKind.Silhouette);
+            if (Player.RunPerks.PoltergeistLife > 0f) Enemies.Decoys.Spawn(p, Player.RunPerks.PoltergeistLife, Enemies.DecoyKind.Silhouette);
+            if (Player.RunPerks.MirrorShardLife > 0f) Enemies.Decoys.Spawn(p, Player.RunPerks.MirrorShardLife, Enemies.DecoyKind.Echo);
+            if (!toSource && Player.RunPerks.BurnoutPulseMelt > 0f && GameState.Melt > 60f && RoomClock.Time >= burnoutReady)
+            {
+                burnoutReady = RoomClock.Time + BurnoutCooldown;
+                Player.RunPerks.MeltAdjust?.Invoke(Player.RunPerks.BurnoutPulseMelt);   // Burnout Pulse spends melt
+                Enemies.IceHunter.DerezWithin(p, BurnoutRange, BurnoutDerez);
+            }
         }
 
         /// Logs one event, updates GameState and raises Scored when it paid. Returns what it paid.

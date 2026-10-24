@@ -15,6 +15,8 @@ namespace Desync.Enemies
         public float telegraph;     // > 0: GlitchCountdown only during the last `telegraph` seconds
 
         float Total => delay > 0f ? delay : Mathf.Max(0.1f, GameConfig.I.glitchZoneTime);
+        /// Static Veil widens the telegraph by 0.5 s (only where there is one; Room 5 already shows the full countdown).
+        float Tel => telegraph > 0f && ExploitFlags.StaticVeil ? telegraph + ExploitFlags.StaticVeilWarn : telegraph;
 
         float _remaining, _last;
         bool _inside;
@@ -28,7 +30,7 @@ namespace Desync.Enemies
             {
                 _inside = inside;
                 _remaining = total;
-                GameState.GlitchCountdown = inside && telegraph <= 0f ? total : -1f;
+                GameState.GlitchCountdown = inside && Tel <= 0f ? total : -1f;
                 GameEvents.GlitchZone?.Invoke(inside);
             }
             if (inside)
@@ -40,7 +42,8 @@ namespace Desync.Enemies
                     PlayerRef.LastKillerPos = transform.position;   // MeltMeter names "GLITCH" if this flip melts the player
                     GameEvents.GlitchForcedFlip?.Invoke();
                 }
-                GameState.GlitchCountdown = telegraph <= 0f || _remaining <= telegraph ? _remaining : -1f;
+                float tel = Tel;
+                GameState.GlitchCountdown = tel <= 0f || _remaining <= tel ? _remaining : -1f;
             }
             float f = inside ? _remaining / total : 1f + 0.04f * Mathf.Sin(Time.time * 5f);
             if (countdownRing) countdownRing.localScale = new Vector3(f, 1f, f);

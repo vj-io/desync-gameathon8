@@ -21,6 +21,7 @@ Shader "Desync/PostFX"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
             #include "DesyncCommon.hlsl"
+            #include "BossDesync.hlsl"   // ARCHITECT P3 split (bosses workstream)
 
             float _Pulse, _Melt, _Trace, _Reboot, _Wipe, _Drip, _FlashScale, _Layer, _FxReduce, _Desat;
             float4 _DesatFocus;
@@ -68,6 +69,7 @@ Shader "Desync/PostFX"
                 float ca = min(0.002 * edgeK + 0.004 * pulse, 0.004) + 0.012 * _Reboot * (0.5 + edgeK);
                 float2 off = float2(ca * fxK, 0.0);
                 float3 col = float3(Fetch(uv + off).r, Fetch(uv).g, Fetch(uv - off).b);
+                col = BossDesync(col, screen, t, fxK, _Layer);
 
                 // Scanlines + slow rolling bright band.
                 float sl = sin(screen.y * _ScreenParams.y * 1.5707963);
