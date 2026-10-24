@@ -27,6 +27,13 @@ namespace Desync.Enemies
         public const int Terminals = 3;
         public const string Id = "architect", KillerId = "ARCHITECT";
 
+        /// True ending: Flow sets it as an ARCHITECT room starts, once the player has earned it. In the final window a third
+        /// way opens: a glyph behind the face (DesyncAt, boss space); touching it in either layer ends the fight as DesyncEnding.
+        public static bool OfferDesync;
+        public const string DesyncEnding = "Desync";
+        public const float DesyncRadius = 0.8f;
+        public static readonly Vector3 DesyncAt = new Vector3(0f, 1.2f, 2.75f);
+
         /// The face block's centre in room space (Content/bosses/architect.json, 48 x 48 tiles: x east, z = -south). Offsets
         /// are (x east, z north) from it and follow the parent's yaw; the tile map marks the Daemon posts 'I'.
         public static readonly Vector2 ArenaCenter = new Vector2(12f, -7f);
@@ -44,6 +51,7 @@ namespace Desync.Enemies
         public Terminal[] terminals;       // the puppet-string terminals; strings[i] runs to terminals[i]
         public LineRenderer[] strings;     // one per terminal, then the final string (face -> player)
         public Daemon[] daemons;           // one per post, inactive until P2
+        public Transform desyncGlyph;      // the third way, shown through the final window when OfferDesync
 
         public int Phase { get; private set; } = 1;
         public int StringsLeft => Mathf.Max(0, Terminals - _hacked);
@@ -140,6 +148,7 @@ namespace Desync.Enemies
         {
             Phase = 4;
             EndingName = ending;
+            if (desyncGlyph) desyncGlyph.gameObject.SetActive(false);
             GapOpen = false;
             GapIn = -1f;
             _seen = false;
@@ -151,8 +160,9 @@ namespace Desync.Enemies
             ShowStrings();
             BossEvents.Ending?.Invoke(ending);
             BossEvents.Phase?.Invoke(Id, 4);
-            GameEvents.PopText?.Invoke(exposed ? "EXPOSED // THE BOARD IS ON AIR" : "MERGED // YOU ARE THE ARCHITECT NOW",
-                                      exposed ? GameConfig.I.green : GameConfig.I.magenta);
+            bool desync = ending == DesyncEnding;
+            GameEvents.PopText?.Invoke(exposed ? "EXPOSED // THE BOARD IS ON AIR" : desync ? "DESYNC // NO LAYER HOLDS YOU" : "MERGED // YOU ARE THE ARCHITECT NOW",
+                                      exposed || desync ? GameConfig.I.green : GameConfig.I.magenta);
             GameEvents.ShakeRequest?.Invoke(0.35f);
             GameEvents.ExitReached?.Invoke();
         }
@@ -182,7 +192,9 @@ namespace Desync.Enemies
                 _finalStart = t;
                 FinalRemaining = FinalTime;
                 ShowStrings();
-                GameEvents.PopText?.Invoke("FLIP IN THE GAZE GAP // SEVER IT", GameConfig.I.green);
+                bool third = OfferDesync && desyncGlyph;
+                if (third) desyncGlyph.gameObject.SetActive(true);
+                GameEvents.PopText?.Invoke(third ? "SEVER IT // OR WALK BEHIND THE FACE" : "FLIP IN THE GAZE GAP // SEVER IT", GameConfig.I.green);
             }
             float u = t - _finalStart;
             FinalRemaining = Mathf.Max(0f, FinalTime - u);
@@ -193,6 +205,11 @@ namespace Desync.Enemies
             if (GapIn > FinalRemaining) GapIn = -1f;
             var fin = FinalString;
             if (fin && PlayerRef.Chest) fin.SetPosition(1, transform.InverseTransformPoint(PlayerRef.Chest.position));
+            if (desyncGlyph && desyncGlyph.gameObject.activeSelf)
+            {
+                desyncGlyph.localRotation = Quaternion.Euler(0f, u * 120f, 0f);
+                if (GameState.Alive && EnemyKit.TouchesPlayer(desyncGlyph.position, DesyncRadius)) { End(DesyncEnding); return; }
+            }
             if (FinalRemaining <= 0f) End(BossEvents.Merged);
         }
 
@@ -312,6 +329,7 @@ namespace Desync.Enemies
             GazeYaw = _last = _sweep = _dwell = 0f;
             for (int i = 0; i < Severed.Length; i++) Severed[i] = false;
             _drawKey = null;
+            if (desyncGlyph) desyncGlyph.gameObject.SetActive(false);
             BossEvents.SetMelt(0f, 0f);
             Shader.SetGlobalFloat(DesyncId, 0f);
             for (int i = 0; daemons != null && i < daemons.Length; i++) if (daemons[i]) daemons[i].gameObject.SetActive(false);
@@ -362,6 +380,13 @@ namespace Desync.Enemies
                 daemons[i].gameObject.SetActive(false);
             }
 
+            var glyph = EnemyKit.Child("DesyncGlyph", t, DesyncAt);   // the third way (OfferDesync), behind the face
+            var gb = new MeshBuilder();
+            uint gs = 0xDE5Cu;
+            gb.Bipyramid(Vector3.zero, Quaternion.identity, 4, 0.3f, 0.45f, 0.45f, Color.white, ref gs, 0.2f);
+            EnemyKit.MeshObj("Knot", glyph, gb.ToMesh("DesyncGlyph", false), sm);
+            glyph.gameObject.SetActive(false);
+
             var boss = root.AddComponent<ArchitectBoss>();
             boss.gazePivot = pivot;
             boss.eye = eye;
@@ -371,6 +396,7 @@ namespace Desync.Enemies
             boss.terminals = terms;
             boss.strings = strings;
             boss.daemons = daemons;
+            boss.desyncGlyph = glyph;
             boss.ShowStrings();
             return root;
         }
