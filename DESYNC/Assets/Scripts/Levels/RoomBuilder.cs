@@ -23,7 +23,8 @@ namespace Desync.Levels
     /// Entities go through EnemyFactory / PlayerFactory, using the generated-room overloads (their defaults are the spec
     /// stats: fixed camera 60 deg x 12 m, sweep camera 90 deg arc / 8 s / 10 m, drone 3 m/s x 10 m, glitch 1.0 s + 0.5 s
     /// telegraph); kinds without a factory are skipped with a warning. Entities stay inactive until the NavMesh is baked,
-    /// then the room wakes in one frame and RoomInfo.Current points at it.
+    /// then wake one per work item (TraceSystem first; the player and RoomInfo last, so RoomInfo.Current points at the room
+    /// only once it is whole).
     public static class RoomBuilder
     {
         public const string BreachScene = "Breach";
@@ -59,6 +60,31 @@ namespace Desync.Levels
             var work = Work(spec, h);
             while (work.MoveNext()) { }
             return h;
+        }
+
+        /// First-use costs of a session, paid once at boot instead of in the first room's build (the builder logs showed them as
+        /// that room's worst frames): the first TextMeshPro (TMP settings, font tables; 30-60 ms in "posters"), the first
+        /// prepared mesh (MeshPrep, ~10 ms extra in "walls") and the first NavMesh update (~15 ms in "navmesh").
+        /// One hidden poster, its panel through MeshKit.ToMesh, and a NavMesh over a 2 m floor far below the scene.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void WarmUp()
+        {
+            var go = new GameObject("BuilderWarmup");
+            go.transform.position = Vector3.down * 1000f;
+            var kit = new MeshKit();
+            RoomGeo.Poster(kit, go.transform, go.transform.position, Vector3.forward, AssetLib.Get<TMP_FontAsset>("font.title"), Color.clear,
+                           string.Join("\n", Posters.Default));
+            foreach (var r in go.GetComponentsInChildren<Renderer>()) r.enabled = false;
+            UnityEngine.Object.Destroy(kit.ToMesh("BuilderWarmup"));
+            RoomGeo.BoxCol(RoomGeo.Node("Floor", GameLayers.Floor, go.transform), Vector3.zero, new Vector3(2f, 0.5f, 2f));
+            var surface = go.AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.Children;
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            surface.layerMask = 1 << GameLayers.Floor;
+            surface.BuildNavMesh();
+            surface.RemoveData();
+            UnityEngine.Object.Destroy(surface.navMeshData);
+            UnityEngine.Object.Destroy(go);
         }
 
         /// The build, one work item per step (RoomHandle.Run decides where frames end). Yields an AsyncOperation to wait on it.
@@ -236,8 +262,25 @@ namespace Desync.Levels
             surface.AddData();
             yield return surface.UpdateNavMesh(h.NavData);
 
+            // Wake one entity per work item (RoomHandle ends the frame at SliceMs): waking a busy room at once took ~20 ms.
+            // The TraceSystem first (a sensor that sees the player would otherwise make its own), the player last with
+            // RoomInfo, so nothing can see a player before the room is whole. Entities a factory left off stay off.
             h.Step = "wake";
+            var player = h.Player;
+            var wake = new List<GameObject>(ents.transform.childCount);
+            for (int pass = 0; pass < 2; pass++)   // TraceSystem, then the rest in creation order
+                foreach (Transform c in ents.transform)
+                    if (c.gameObject.activeSelf && c.gameObject != player && (bool)c.GetComponent<TraceSystem>() == (pass == 0))
+                        wake.Add(c.gameObject);
+            foreach (var e in wake) e.SetActive(false);   // the hierarchy is inactive: no callbacks
+            if (player) player.SetActive(false);
             ents.SetActive(true);
+            foreach (var e in wake)
+            {
+                e.SetActive(true);
+                yield return null;
+            }
+            if (player) player.SetActive(true);
             infoGo.SetActive(true);   // RoomInfo.Current = this room
             yield return null;
 
