@@ -2,7 +2,8 @@ using UnityEngine;
 
 namespace Desync.Player
 {
-    /// Space / GlitchForcedFlip toggles RENDER<->SOURCE. Returning to RENDER inside a WallRender volume is rejected.
+    /// Space / GlitchForcedFlip toggles RENDER<->SOURCE. Returning to RENDER inside a WallRender volume is rejected, and so is
+    /// SPACE inside a run's dead zone (forced flips still happen there).
     public class FlipController : MonoBehaviour
     {
         MeltMeter melt;
@@ -27,6 +28,7 @@ namespace Desync.Player
 
         bool TryFlip(bool forced)
         {
+            if (!forced && RunPerks.InDeadZone(transform.position)) { GameEvents.FlipRejected?.Invoke(); return false; }   // DEAD_ZONES: SPACE does nothing here
             bool toSource = !LayerState.InSource;
             if (!toSource && Blocked()) { GameEvents.FlipRejected?.Invoke(); return false; }
             LayerState.Set(toSource);

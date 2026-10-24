@@ -14,6 +14,7 @@ namespace Desync.Flow
     /// Persistent per-room flow: room start, RoomClock, death recap -> REBOOT (identical restart, in place), terminals ->
     /// exit/finale -> results (RoomReport) -> continue / retry, legacy GHOST combo, Room 5 trace countdown.
     /// Scoring lives in ScoreKeeper (same GameObject). Self-bootstraps; activates whenever a scene with a RoomInfo loads.
+    /// In a BREACH run (RunManager builds the room, then calls Activate) the run decides deaths, continue and targets.
     [DefaultExecutionOrder(-100)]
     public class RoomManager : MonoBehaviour
     {
@@ -27,9 +28,14 @@ namespace Desync.Flow
 
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+        /// Melt every attempt of the room starts with, REBOOT included: the run's carried melt (RunManager), 0 in CLASSIC.
+        public static float StartMelt;
+
         RoomInfo room;
         ScoreKeeper score;
         readonly List<IResettable> resettables = new List<IResettable>();
+        string roomId;
+        bool run;   // a BREACH run room: RunManager owns deaths (Backups), continue, targets; R does not restart
         bool rebooting, clearing, exitDone, recap, leaving;
         int bestCombo, pendingFlips, recapFrame, roomPar, finaleScore;
         float lastFlipTime, recapEnd, finaleTime;
@@ -54,7 +60,7 @@ namespace Desync.Flow
             SceneManager.sceneLoaded += OnSceneLoaded;
             GameEvents.PlayerKilled += OnKilled;
             GameEvents.Alarm += OnAlarm;
-            GameEvents.RestartRequested += Reboot;
+            GameEvents.RestartRequested += OnRestartRequested;
             GameEvents.ContinueRequested += OnContinue;
             GameEvents.StartRequested += OnStartRequested;
             GameEvents.AccessGranted += OnAccessGranted;
@@ -70,7 +76,7 @@ namespace Desync.Flow
             SceneManager.sceneLoaded -= OnSceneLoaded;
             GameEvents.PlayerKilled -= OnKilled;
             GameEvents.Alarm -= OnAlarm;
-            GameEvents.RestartRequested -= Reboot;
+            GameEvents.RestartRequested -= OnRestartRequested;
             GameEvents.ContinueRequested -= OnContinue;
             GameEvents.StartRequested -= OnStartRequested;
             GameEvents.AccessGranted -= OnAccessGranted;
@@ -95,11 +101,18 @@ namespace Desync.Flow
             rebooting = clearing = recap = leaving = false;
             finaleResults = null;
             room = info;
+            run = room && RunManager.I && RunManager.I.RoomLive;
             resettables.Clear();
             GameState.RoomIndex = room ? room.index : -1;
             GameState.DeathsInRoom = 0;
             GameState.RoomTDev = 0f;
-            if (room) RoomReports.RoomTargets(room.index, room.terminalCount, out GameState.RoomTDev, out roomPar);
+            roomId = null;
+            if (run) RunManager.I.Targets(room, out roomId, out GameState.RoomTDev, out roomPar);
+            else if (room)
+            {
+                if (room.index >= 0) roomId = ScoreKeeper.RoomId(room.index);   // a generated room outside a run is not scored
+                RoomReports.RoomTargets(room.index, room.terminalCount, out GameState.RoomTDev, out roomPar);
+            }
             ResetRoomState(false);   // a freshly loaded scene is already in its initial state (and Start hasn't run yet)
             if (!room)
             {
@@ -113,12 +126,28 @@ namespace Desync.Flow
             GameEvents.RoomStarted?.Invoke(room.index);
         }
 
+        /// RunManager removed the room (next node, run over): drop it and stop everything room-bound until the next Activate.
+        public void Detach()
+        {
+            StopAllCoroutines();
+            if (recap) Time.timeScale = 1f;
+            rebooting = clearing = recap = leaving = run = false;
+            finaleResults = null;
+            room = null;
+            roomId = null;
+            resettables.Clear();
+            GameState.RoomIndex = -1;
+            ResetRoomState(false);   // back to RENDER, room fields cleared: what a scene without a room gets
+            RoomClock.Running = false;
+            GameState.Phase = GameState.PhaseKind.Title;   // menus (run map, draft, market) until the next room
+        }
+
         /// LayerState, clock, every room field of GameState, scoring, then (on REBOOT) every IResettable in the room.
         void ResetRoomState(bool resetObjects)
         {
             LayerState.Set(false);
             RoomClock.Reset();
-            GameState.Melt = 0f;
+            GameState.Melt = StartMelt;
             GameState.Alive = true;
             GameState.TraceActive = false;
             GameState.TraceRemaining = 0f;
@@ -141,7 +170,7 @@ namespace Desync.Flow
             exitDone = clearing = false;
             bestCombo = 0;
             BreakCombo();
-            score.Begin(room ? room.index : -1);
+            score.Begin(roomId);
             if (!resetObjects) return;
             foreach (var r in resettables)
             {
@@ -149,6 +178,7 @@ namespace Desync.Flow
                 try { r.ResetState(); }
                 catch (Exception e) { Debug.LogException(e); }   // one broken component must not stall the restart
             }
+            GameState.Melt = StartMelt;   // MeltMeter.ResetState zeroed it
         }
 
         void Update()
@@ -163,7 +193,7 @@ namespace Desync.Flow
             }
             if (rebooting || clearing) return;
 
-            if (GameInput.Restart.WasPressedThisFrame() && !GameState.Paused && !GameState.Cinematic) { Reboot(); return; }
+            if (!run && GameInput.Restart.WasPressedThisFrame() && !GameState.Paused && !GameState.Cinematic) { Reboot(); return; }
 
             if (pendingFlips > 0 && RoomClock.Time - lastFlipTime >= CleanFlipWindow) CreditPendingFlips();
 
@@ -203,6 +233,7 @@ namespace Desync.Flow
             };
             PlayerRef.LastKillerId = null;   // consumed: the next death names its own killer
             GameState.DeathsInRoom++;
+            if (run) RunManager.I.OnDeath();   // spends a Backup or marks the run lost, before the card reads RunState
             GameState.Phase = GameState.PhaseKind.Recap;
             Time.timeScale = 0f;
             recapFrame = Time.frameCount;
@@ -241,6 +272,14 @@ namespace Desync.Flow
         {
             recap = false;
             Time.timeScale = GameState.Paused ? 0f : 1f;
+            if (run && RunManager.I.RunLost) { RunManager.I.EndAfterDeath(); return; }   // no Backup left: run results
+            Reboot();   // in a run this is the Backup respawn: room start, chain reset
+        }
+
+        /// Pause-menu restart / results Retry. In a run only the recap skip counts: a free restart would dodge the Backup cost.
+        void OnRestartRequested()
+        {
+            if (run && !recap) return;
             Reboot();
         }
 
@@ -284,7 +323,7 @@ namespace Desync.Flow
             if (!room || exitDone) return;
             exitDone = true;
             GameState.TerminalsDone = GameState.TerminalsTotal;
-            if (room.index == SceneFlow.RoomCount - 1)
+            if (!run && room.index == SceneFlow.RoomCount - 1)
             {
                 finaleTime = RoomClock.Time;   // the last room is cleared as the finale starts; results follow it
                 finaleScore = score.Finish(GameState.TraceCount);
@@ -324,8 +363,9 @@ namespace Desync.Flow
         void ShowResults(float time, int eventsScore, bool raiseCleared)
         {
             var report = RoomReports.Build(room.index, time, eventsScore, score.PeakMultiplier, GameState.RoomTDev, roomPar,
-                                           PreviousBest(room.index), GameState.TraceCount, GameState.Mods.Clamped().ScoreMult);
-            report.shareText = RoomReports.AddToRun(report, score.BestChain, DateTime.UtcNow);
+                                           run ? null : PreviousBest(room.index), GameState.TraceCount, GameState.Mods.Clamped().ScoreMult);
+            report.shareText = run ? RunManager.I.RoomCleared(report, score.BestChain)
+                                   : RoomReports.AddToRun(report, score.BestChain, DateTime.UtcNow);
             var legacy = StoreResult(report);
             if (raiseCleared) GameEvents.RoomCleared?.Invoke(legacy);   // kept for listeners of the old grade card
             GameState.Phase = GameState.PhaseKind.Results;
@@ -342,6 +382,7 @@ namespace Desync.Flow
         {
             if (!room || leaving || GameState.Phase != GameState.PhaseKind.Results) return;
             leaving = true;
+            if (run) { RunManager.I.ContinueFromResults(); return; }   // draft, map, next act or run results
             SceneFlow.LoadRoom(room.index + 1);   // index >= RoomCount loads Ending
         }
 
@@ -360,6 +401,7 @@ namespace Desync.Flow
                 flips = GameState.Flips,
                 bestCombo = bestCombo,
             };
+            if (run) return r;   // run rooms are generated (or played under exploits): no classic best, no ending row
             GameState.Results[i] = r;
             BestTimes.Record(r);
             return r;

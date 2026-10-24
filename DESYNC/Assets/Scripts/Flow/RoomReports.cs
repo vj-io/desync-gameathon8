@@ -121,7 +121,7 @@ namespace Desync.Flow
             parScore = FallbackPar(terminals);
         }
 
-        static int FallbackPar(int terminals) => Scoring.RoomClearPts + Scoring.NoTraceRoomPts + terminals * 450 + 300;
+        internal static int FallbackPar(int terminals) => Scoring.RoomClearPts + Scoring.NoTraceRoomPts + terminals * 450 + 300;
 
         /// The n-th hint (0-based, wraps) for a death, or null when hints.json or that cause's list is missing.
         public static string Hint(DeathCause cause, string killerId, int n)

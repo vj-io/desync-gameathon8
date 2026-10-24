@@ -60,7 +60,10 @@ namespace Desync.Flow
         }
 
         /// Fresh attempt of room `index` (negative: no room, stop scoring).
-        public void Begin(int index)
+        public void Begin(int index) => Begin(index >= 0 ? RoomId(index) : null);
+
+        /// Fresh attempt of the room with this id (a run room uses its node id; null: no room, stop scoring).
+        public void Begin(string id)
         {
             Log.Clear();
             tally.Reset();
@@ -68,8 +71,8 @@ namespace Desync.Flow
             lastClean = 0f;
             PeakMultiplier = 1f;
             BestChain = 0;
-            live = index >= 0;
-            roomId = live ? RoomId(index) : null;
+            live = id != null;
+            roomId = id;
             Publish();
         }
 
@@ -121,7 +124,14 @@ namespace Desync.Flow
         }
 
         void OnHackFailed() { if (live) Add(EventType.ChainBreak); }
-        void OnHackFinished(bool perfect) { if (live) Add(perfect ? EventType.HackPerfect : EventType.Hack); }
+        void OnHackFinished(bool perfect)
+        {
+            if (!live) return;
+            Add(perfect ? EventType.HackPerfect : EventType.Hack);
+            // Packet Loss: the hack is a chain step. CleanFlip is the only event that steps the chain, so it is logged as one
+            // (the replay then agrees with the live score).
+            if (Player.RunPerks.PacketLoss) { lastClean = RoomClock.Time; Add(EventType.CleanFlip); }
+        }
         void OnGrazed(string ice) { if (live) Add(EventType.Graze, ice); }
 
         void OnDeath(DeathInfo _)

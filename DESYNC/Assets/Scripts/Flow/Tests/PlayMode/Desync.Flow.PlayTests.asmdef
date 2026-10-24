@@ -1,9 +1,26 @@
 {
   "name": "Desync.Flow.PlayTests",
   "rootNamespace": "Desync.Flow.Tests",
-  "references": ["Desync.Core","Desync.Rules","Desync.Player","Desync.Flow","Desync.Enemies","Desync.Net","Unity.InputSystem","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "references": [
+    "Desync.Core",
+    "Desync.Rules",
+    "Desync.Player",
+    "Desync.Flow",
+    "Desync.Enemies",
+    "Desync.Net",
+    "Unity.InputSystem",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner",
+    "Desync.Gen",
+    "Desync.Content",
+    "Desync.Levels"
+  ],
   "overrideReferences": true,
-  "precompiledReferences": ["nunit.framework.dll"],
-  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
   "autoReferenced": false
 }

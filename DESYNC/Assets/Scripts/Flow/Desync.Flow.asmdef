@@ -13,7 +13,8 @@
     "Unity.RenderPipelines.Core.Runtime",
     "UnityEngine.UI",
     "Desync.Gen",
-    "Desync.Content"
+    "Desync.Content",
+    "Desync.Levels"
   ],
   "autoReferenced": true
 }
