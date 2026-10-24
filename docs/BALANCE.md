@@ -144,3 +144,54 @@ These apply to the full game. The six-room build will not meet them.
 
 | Date | Pass | Levers changed (max 3) | Before to after | Reason | Result |
 | --- | --- | --- | --- | --- | --- |
+
+## Unlock economy (M4: unlock tree, Deep Layer 11-30)
+
+Fragments buy the unlock tree (`Resources/Content/unlocks.json`, `Flow/Unlocks.cs`, screen `UI/UnlockTree.cs`). The balance check is `UnlocksTests.Economy_*` (EditMode): it recomputes the numbers below from `RunRules` and the spec's clear rates and fails when the tree drifts away from the cadence.
+
+Income per cleared room (`RunRules`): clear 10, +10 for Gold or better, +15 for grade S. A death banks 40 % of what the run earned (rounded up) plus 3 (`RunRules.Bank`); a win or a cash-out banks all of it. Deep Layer adds +10 % per level up to DL 20; DL 21-30 add nothing, so the estimate leaves the bonus out (it only makes the tree cheaper).
+
+Estimate inputs (all in the test, one place):
+
+| Input | Value | Why |
+| --- | --- | --- |
+| Rooms per act, boss included | 4.2 | 4 map nodes x 0.80 (Infiltration .60, Elite .15, Anomaly .05; Market and Cooldown pay nothing) + the boss |
+| Fragments per cleared room | 12 | 10 + 10 x ~10 % Gold-or-better rooms + 15 x ~7 % grade S |
+| Minutes per room | 1.5 | a 12-room campaign in about 19 min (spec: 18-22), menus and drafts included |
+| Run time share | 90 % | menus, results, retries inside a death |
+| A run that dies | mid-act, banks `Bank(earned, died)` | the run goes as deep as the open acts allow, then cashes out |
+
+Act clear rates by hour of play (spec F10: Act 1 85-97 %, Act 2 60-85 %, Act 3 40-70 %; early hours play below the middle of those ranges while the player learns, and an act only counts once its boss opened it):
+
+| Hours | Acts open | Clear rate per act | Fragments / hour |
+| --- | --- | --- | --- |
+| 0-1 | 1 | .80 | 409 |
+| 1-2 | 1-2 | .85, .60 | 347 |
+| 2-4 | 1-3 | .88, .65, .45 | 280 |
+| 4-8 | 1-3 | .91, .72, .55 | 306 |
+
+Banked by hour 1 / 2 / 4 / 6 / 7 / 8: 409 / 755 / 1,315 / 1,928 / 2,234 / 2,540 Fragments.
+
+The tree (cost in Fragments; `by` = hour a median player can afford everything due up to that node):
+
+| Node | Cost | Needs | By (h) | Spec cadence |
+| --- | --- | --- | --- | --- |
+| STARTER SET (first 8 exploits) | free | | 0.5 | 0-0.5 h: first 8 exploits |
+| DAILY BREACH | free | | 0.5 | Daily visible from the start |
+| BLACK MARKET | 80 | | 1 | 0.5-1 h: Black Market |
+| GHOST START | 100 | | 1 | 0.5-1 h: GHOST and PHANTOM starters |
+| PHANTOM START | 120 | GHOST START | 1 | |
+| EXPLOITS II (+8) | 90 | STARTER SET | 2 | 1-2 h: +16 exploits |
+| EXPLOITS III (+8) | 110 | EXPLOITS II | 2 | |
+| DUOS (10 duo exploits) | 80 | EXPLOITS III | 2 | 1-2 h: duos possible |
+| TIME-ATTACK (`unlock_timeattack`) | 70 | | 2 | 1-2 h: Time-Attack |
+| REDLINE / OVERCLOCK / TRACER START | 130 / 150 / 170 | the one before | 4 | "then others" |
+| EXPLOITS IV (+8) | 340 | EXPLOITS III | 6 | 4-8 h: remaining exploits |
+| EXPLOITS V (+8) | 420 | EXPLOITS IV | 7 | |
+| EXPLOITS VI (+8) | 480 | EXPLOITS V | 8 | |
+
+Costs due by hour 1 / 2 / 4 / 6 / 7 / 8: 300 / 650 / 1,100 / 1,440 / 1,860 / 2,340, against 409 / 755 / 1,315 / 1,928 / 2,234 / 2,540 banked (73 / 86 / 84 / 75 / 83 / 92 %). The whole tree, 2,340 Fragments, is affordable at about 7.4 h. The tests require every tier to be affordable by its hour and the whole tree to take between 6.5 and 8 h.
+
+Gating rules (anti-grind): every node is reachable at DL 0 (no boss, no Deep Layer, no cosmetic as a requirement); nothing is time-gated or login-gated; a death still banks at least 40 % of a win. Only runs with the player's own seed are gated: Campaign, Quick and Deep Layer runs. Daily (and any shared-seed mode added later) always drafts from all 58 exploits, sells at the Black Market and starts empty-handed, so a leaderboard compares like with like. Deep Layer runs always keep the Black Market because Poor Market is one of their heat mutators. Until BLACK MARKET is bought, Market nodes on a Campaign or Quick map play as Infiltration rooms (same id, links and seed).
+
+Deep Layer 11-30 (`DeepRules`, `DeepRewards`): the preset ladder adds one heat per level through DL 30 (30 of the 40 heat; Boss Overclock is not a step because DL 6 and up already run the bosses hot). DL 11-23 raise melt, hack, TRACE and camera pressure with the single-heat mutators; from DL 24 a heavier mutator replaces lighter ones each level (Double Patrol, Tracker Swarm, Scrambled Prompts, Fewer Choices, No Backups, Gaze Everywhere). Fragments +10 % per level stops at DL 20 (+200 %). Rewards are cosmetic only: one per level from DL 11 to DL 20 (six titles, RIPPLE, SHARDS, AFTERGLOW and STREAK flip effects) and the SYNC GOLD flip trail at DL 30; DL 21-29 pay nothing and are played for DL 30.

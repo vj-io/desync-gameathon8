@@ -33,7 +33,7 @@ namespace Desync.Flow.Tests
         {
             CollectionAssert.Contains(DeepRules.Check(0, DeepRules.Preset(1), Cat, 10), "locked:0");
             CollectionAssert.Contains(DeepRules.Check(4, DeepRules.Preset(4), Cat, 3), "locked:4", "one above the best won");
-            CollectionAssert.Contains(DeepRules.Check(11, DeepRules.Preset(10), Cat, 20), "locked:11", "M3 stops at DL 10");
+            CollectionAssert.Contains(DeepRules.Check(DeepRules.MaxLevel + 1, DeepRules.Preset(DeepRules.MaxLevel), Cat, 40), "locked:" + (DeepRules.MaxLevel + 1), "M4 stops at DL 30 (M3 stopped at DL 10)");
             CollectionAssert.Contains(DeepRules.Check(3, DeepRules.Preset(2), Cat, 10), "heat:2/3");
             CollectionAssert.Contains(DeepRules.Check(4, P(("hardened_ice", 1), ("hardened_ice", 3)), Cat, 10), "duplicate:hardened_ice");
             CollectionAssert.Contains(DeepRules.Check(1, P(("double_melt", 1)), Cat, 10), "rank:double_melt:1", "a run mutator is not a heat pick");
@@ -122,12 +122,12 @@ namespace Desync.Flow.Tests
             Assert.IsTrue(RunUnlocks.RecordDeepWin(save, 1));
             Assert.IsFalse(RunUnlocks.RecordDeepWin(save, 1));
             Assert.AreEqual(2, RunUnlocks.MaxDeepLayer(save));
-            save.deepLayerMax = 10;
+            save.deepLayerMax = DeepRules.MaxLevel;
             Assert.AreEqual(DeepRules.MaxLevel, RunUnlocks.MaxDeepLayer(save));
 
             var back = SaveMigrator.Migrate(SaveMigrator.Serialize(save));
             CollectionAssert.AreEqual(save.unlocks, back.unlocks);
-            Assert.AreEqual(10, back.deepLayerMax);
+            Assert.AreEqual(DeepRules.MaxLevel, back.deepLayerMax);
         }
     }
 }

@@ -12,13 +12,16 @@ namespace Desync.Flow
     // player picks with their ranks (Content/mutators.json, ranks[r-1] = heat at rank r). The run's Deep Layer IS the total
     // heat of the picks, so "DL 7" means exactly 7 heat. Every level has a preset (DeepRules.Preset) the select screen
     // offers as its default, so picking a level alone is enough. Levels open one at a time: DL 1 after the first ARCHITECT
-    // kill, then up to one above the best Deep Layer won (SaveV3.deepLayerMax), capped at DeepRules.MaxLevel (10 in M3).
+    // kill, then up to one above the best Deep Layer won (SaveV3.deepLayerMax), capped at DeepRules.MaxLevel (10 in M3, 30 in M4).
+    // M4: DL 11-20 each pay a cosmetic reward and a bigger Fragments bonus up to DL 20; DL 21-30 are played for the DL 30 cosmetic
+    // only (Cosmetics.cs: DeepRewards).
 
     /// The Deep Layer of the run in progress (writer: RunManager at run start; reader: DL select, HUD, results).
     public static class DeepRun
     {
         public static int Level;                                                 // 0 = not a Deep Layer run
         public static readonly List<MutatorPick> Picks = new List<MutatorPick>();   // heat mutators, canonical order (by id)
+        public static readonly List<Cosmetic> Rewards = new List<Cosmetic>();       // what the last Deep Layer win earned (RecordDeepWin); cleared with the run
         /// UI (DL select) -> run: start a Deep Layer CAMPAIGN at `level` with these picks (null = DeepRules.Preset(level)).
         public static Action<int, IReadOnlyList<MutatorPick>> StartRequested;
     }
@@ -56,10 +59,14 @@ namespace Desync.Flow
         /// Highest Deep Layer the player may start: one above the best won, 0 while Deep Layer is closed.
         public static int MaxDeepLayer(SaveV3 save) => DeepLayerOpen(save) ? Math.Min(DeepRules.MaxLevel, Math.Max(0, save.deepLayerMax) + 1) : 0;
 
-        /// A won Deep Layer run; true when it raised the best.
+        /// A won Deep Layer run; true when it raised the best. Every level the win moves past pays its reward (DeepRewards.Grant,
+        /// DeepRun.Rewards): the first win of each level, DL 11-20 and DL 30.
         public static bool RecordDeepWin(SaveV3 save, int level)
         {
             if (level <= save.deepLayerMax) return false;
+            var got = DeepRewards.Grant(save, save.deepLayerMax, level);
+            DeepRun.Rewards.Clear();
+            DeepRun.Rewards.AddRange(got);
             save.deepLayerMax = level;
             return true;
         }
@@ -68,19 +75,39 @@ namespace Desync.Flow
     /// Deep Layer numbers, presets, validation and how the picks fold into a room (Modifiers, flags, generator placement).
     public static class DeepRules
     {
-        public const int MaxLevel = 10;          // M3 ships DL 1-10
-        public const int RewardCap = 20;         // the Fragments bonus grows to DL 20 and stops there (M4 extends)
+        public const int MaxLevel = 30;          // DL 1-30 (M3 shipped 1-10)
+        public const int RewardCap = 20;         // the Fragments bonus grows to DL 20 and stops there; DL 21-30 pay the DL 30 cosmetic only
         public const int RewardPercent = 10;     // Fragments bonus per level, % of what the run earned
         public const int BossHeatLevel = 6;      // DL >= 6: boss heat variants on every boss
         public const string BossHeatFlag = "flag:boss_overclock";
 
-        /// Presets: each level adds one heat to the one below (a new rank-1 mutator or a rank raised).
-        static readonly MutatorPick[] Ladder =
+        /// One step of the preset ladder: `id` at `rank`, after dropping the picks in `drop`. Every step adds exactly one heat.
+        readonly struct Step
         {
-            new MutatorPick("tight_deadline", 1), new MutatorPick("hardened_ice", 1), new MutatorPick("poor_market", 1),
-            new MutatorPick("long_sequences", 1), new MutatorPick("unstable_reality", 1), new MutatorPick("persistent_melt", 1),
-            new MutatorPick("wider_lens", 1), new MutatorPick("hot_silicon", 1), new MutatorPick("hardened_ice", 2),
-            new MutatorPick("tight_deadline", 2),
+            public readonly string id; public readonly int rank; public readonly string[] drop;
+            public Step(string id, int rank, params string[] drop) { this.id = id; this.rank = rank; this.drop = drop; }
+        }
+
+        /// Presets: each level adds one heat to the one below (a new rank-1 mutator, a rank raised, or - from DL 24, once every single
+        /// heat is spent - a heavier mutator swapped in for lighter ones). DL 1-10 are the M3 ladder, DL 11-23 raise the pressure on melt,
+        /// hacks, TRACE and cameras, DL 24-30 bring the heat threats and the rule-breakers (No Backups, Gaze Everywhere). Boss Overclock is
+        /// not a step: DL 6 and up already run the bosses hot.
+        static readonly Step[] Ladder =
+        {
+            new Step("tight_deadline", 1), new Step("hardened_ice", 1), new Step("poor_market", 1),
+            new Step("long_sequences", 1), new Step("unstable_reality", 1), new Step("persistent_melt", 1),
+            new Step("wider_lens", 1), new Step("hot_silicon", 1), new Step("hardened_ice", 2),
+            new Step("tight_deadline", 2),
+            // 11-20
+            new Step("hair_trigger", 1), new Step("expensive_flip", 1), new Step("long_sequences", 2), new Step("wider_lens", 2),
+            new Step("hot_silicon", 2), new Step("auditor_protocol", 1), new Step("slow_cooling", 1), new Step("tight_deadline", 3),
+            new Step("hardened_ice", 3), new Step("blackout", 1),
+            // 21-30
+            new Step("hair_trigger", 2), new Step("slow_cooling", 2), new Step("hot_silicon", 3),
+            new Step("double_patrol", 1, "poor_market"), new Step("tracker_swarm", 1, "expensive_flip"),
+            new Step("scrambled_prompts", 1, "blackout"), new Step("fewer_choices", 1, "persistent_melt"),
+            new Step("no_backups", 1, "unstable_reality", "auditor_protocol"), new Step("gaze_everywhere", 1, "hair_trigger"),
+            new Step("hair_trigger", 1),
         };
 
         /// The default picks of a level (total heat = level), canonical order.
@@ -89,8 +116,11 @@ namespace Desync.Flow
             var picks = new List<MutatorPick>();
             for (int i = 0; i < Math.Min(level, Ladder.Length); i++)
             {
-                int at = picks.FindIndex(p => p.id == Ladder[i].id);
-                if (at >= 0) picks[at] = Ladder[i]; else picks.Add(Ladder[i]);
+                var step = Ladder[i];
+                foreach (var d in step.drop) picks.RemoveAll(p => p.id == d);
+                int at = picks.FindIndex(p => p.id == step.id);
+                var pick = new MutatorPick(step.id, step.rank);
+                if (at >= 0) picks[at] = pick; else picks.Add(pick);
             }
             return Canonical(picks);
         }
