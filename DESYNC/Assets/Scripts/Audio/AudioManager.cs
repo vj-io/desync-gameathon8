@@ -323,13 +323,13 @@ namespace Desync.Audio
 
         void OnPaused(bool paused) { _evPaused = paused; }
         void OnGameCompleted() { Play2D(_bank.finaleSting, 0.9f, 1f, PMax); _stingUntil = Time.unscaledTime + 4f; }
-        void OnSettingsChanged() { AudioListener.volume = Settings.Volume; }
+        void OnSettingsChanged() { MixSettingsChanged(); }
         void OnStartRequested(int room) => OnUiClick();
         void OnLevelSelect(bool shown) => OnUiClick();
         void OnUiClick() => Play2D(_bank.uiClick, 1f, 1f, PMid);
 
-        void Play2D(AudioClip c, float vol, float pitch, int prio) => _pool.Play(c, vol, pitch, prio, false, Vector3.zero, VoiceCap - LoopVoices());
-        void Play3D(AudioClip c, float vol, float pitch, int prio, Vector3 pos) => _pool.Play(c, vol, pitch, prio, true, pos, VoiceCap - LoopVoices());
+        void Play2D(AudioClip c, float vol, float pitch, int prio) => _pool.Play(c, MixCue(c, prio, vol), pitch, prio, false, Vector3.zero, VoiceCap - LoopVoices());
+        void Play3D(AudioClip c, float vol, float pitch, int prio, Vector3 pos) => _pool.Play(c, MixCue(c, prio, vol), pitch, prio, true, pos, VoiceCap - LoopVoices());
 
         // ------------------------------------------------------------------ voice pool (allocation-free after construction)
         /// n2 non-spatial sources (UI / flow cues, still sound while paused) followed by n3 spatial ones (linear rolloff 2-15 m).
