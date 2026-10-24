@@ -1,0 +1,134 @@
+{
+  "about": "Shared score cases for the leaderboard. Rules.ScoreTally + Scoring.TimeBonus (C#, Net/LeaderboardScore.cs) and web/api/leaderboard.ts must both reproduce every expected value exactly. Event: [t, type, ice, melt]. Mods: [fromEvent, scoreMult, chainCap, redlineThreshold, grazeCapBonus]; none = the defaults. seeds: board key -> FNV-1a seed. weeks: UTC date -> ISO week board.",
+  "seeds": [["2026-10-24", 3698842276], ["2026-W43", 101411902], ["2020-W53", 3503568753]],
+  "weeks": [["2026-10-24", "2026-W43"], ["2021-01-03", "2020-W53"], ["2024-12-30", "2025-W01"], ["2026-01-01", "2026-W01"], ["2027-01-01", "2026-W53"]],
+  "cases": [
+    {
+      "name": "four clean flips, a perfect hack, a clean exit",
+      "roomScores": [4125],
+      "expected": 4125,
+      "rooms": [
+        { "id": "a1n0", "time": 20, "tDev": 20, "mods": [],
+          "events": [
+            [1.0, "Flip", null, 0],
+            [1.0, "CleanFlip", null, 0],
+            [2.5, "Flip", null, 0],
+            [2.5, "CleanFlip", null, 0],
+            [4.0, "CleanFlip", null, 0],
+            [5.5, "CleanFlip", null, 0],
+            [9.0, "HackPerfect", null, 0],
+            [20, "NoTraceRoom", null, 0],
+            [20, "RoomClear", null, 0]
+          ] }
+      ]
+    },
+    {
+      "name": "a half point rounds away from zero",
+      "roomScores": [1313],
+      "expected": 1313,
+      "rooms": [
+        { "id": "a1n0", "time": 10, "tDev": 0, "mods": [],
+          "events": [
+            [2.0, "CleanFlip", null, 0],
+            [10, "RoomClear", null, 0]
+          ] }
+      ]
+    },
+    {
+      "name": "graze cap with a surge bonus and the REDLINE threshold",
+      "roomScores": [2000],
+      "expected": 2000,
+      "rooms": [
+        { "id": "a1n1", "time": 30, "tDev": 22.5, "mods": [[0, 1, 4, 90, 1]],
+          "events": [
+            [3.0, "Graze", "ICE-1", 0],
+            [3.4, "Graze", "ICE-1", 0],
+            [3.8, "Graze", "ICE-1", 0],
+            [4.2, "Graze", "ICE-1", 0],
+            [4.6, "Graze", "ICE-1", 0],
+            [5.0, "Graze", "ICE-2", 0],
+            [6.0, "Exit", null, 89.99999],
+            [7.0, "Exit", null, 90],
+            [8.0, "Redline", null, 90],
+            [30, "RoomClear", null, 0]
+          ] }
+      ]
+    },
+    {
+      "name": "score multiplier changes mid-room",
+      "roomScores": [3988],
+      "expected": 3988,
+      "rooms": [
+        { "id": "a1n2", "time": 12.34, "tDev": 17.1875, "mods": [[0, 1.3, 4, 90, 0], [3, 1.95, 4, 90, 0], [6, 1.3, 4, 90, 0]],
+          "events": [
+            [1.1, "CleanFlip", null, 0],
+            [2.2, "CleanFlip", null, 0],
+            [3.0, "Hack", null, 0],
+            [4.1, "CleanFlip", null, 0],
+            [5.0, "HackPerfect", null, 0],
+            [5.5, "Detected", null, 0],
+            [6.0, "Graze", "ICE-3", 0],
+            [7.0, "PuppetString", null, 0],
+            [12.34, "RoomClear", null, 0]
+          ] }
+      ]
+    },
+    {
+      "name": "chain cap 5, a long chain, a break",
+      "roomScores": [5707],
+      "expected": 5707,
+      "rooms": [
+        { "id": "a2n3", "time": 41.7, "tDev": 35, "mods": [[0, 0.9, 5, 85, 0]],
+          "events": [
+            [1, "CleanFlip", null, 0],
+            [2, "CleanFlip", null, 0],
+            [3, "CleanFlip", null, 0],
+            [4, "CleanFlip", null, 0],
+            [5, "CleanFlip", null, 0],
+            [6, "CleanFlip", null, 0],
+            [7, "CleanFlip", null, 0],
+            [8, "CleanFlip", null, 0],
+            [9, "CleanFlip", null, 0],
+            [10, "CleanFlip", null, 0],
+            [11, "CleanFlip", null, 0],
+            [12, "CleanFlip", null, 0],
+            [13, "CleanFlip", null, 0],
+            [14, "CleanFlip", null, 0],
+            [15, "CleanFlip", null, 0],
+            [16, "CleanFlip", null, 0],
+            [17, "CleanFlip", null, 0],
+            [18, "CleanFlip", null, 0],
+            [18.5, "HackPerfect", null, 0],
+            [21, "ChainBreak", null, 0],
+            [22, "Exit", null, 86],
+            [41.7, "NoTraceRoom", null, 0],
+            [41.7, "RoomClear", null, 0]
+          ] }
+      ]
+    },
+    {
+      "name": "two rooms, time bonus on an overclocked medal time",
+      "roomScores": [2670, 3250],
+      "expected": 5920,
+      "rooms": [
+        { "id": "a1n0", "time": 21.3, "tDev": 19.55, "mods": [[0, 1.4, 4, 90, 0]],
+          "events": [
+            [1.5, "CleanFlip", null, 0],
+            [3.25, "CleanFlip", null, 0],
+            [8.0, "Hack", null, 0],
+            [21.3, "RoomClear", null, 0]
+          ] },
+        { "id": "a1n4", "time": 58.07, "tDev": 40.625, "mods": [],
+          "events": [
+            [2, "CleanFlip", null, 0],
+            [9, "HackPerfect", null, 0],
+            [15, "HackPerfect", null, 0],
+            [16, "Graze", "ICE-1", 0],
+            [30, "HackPerfect", null, 0],
+            [58.07, "NoTraceRoom", null, 0],
+            [58.07, "RoomClear", null, 0]
+          ] }
+      ]
+    }
+  ]
+}
