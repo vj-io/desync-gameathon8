@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Desync.Art;
 using Desync.Enemies;
 using Desync.Gen;
 using Desync.Rules;
@@ -191,19 +192,27 @@ namespace Desync.Levels
                     case EntityKind.CameraFixed: Safe(e, () => EnemyFactory.FixedCamera(ents.transform, p + Vector3.up * CamHeight, yaw, CamPitch)); break;
                     case EntityKind.CameraSweep: Safe(e, () => EnemyFactory.SweepCamera(ents.transform, p + Vector3.up * CamHeight, yaw, CamPitch)); break;
                     case EntityKind.Drone:
+                    case EntityKind.Lantern:
                         if (e.path == null || e.path.Length < 4) { Debug.LogWarning($"[DESYNC] LEVELS: drone {e.id} has no patrol loop; skipped"); break; }
                         var wps = new Vector3[e.path.Length / 2];
                         for (int i = 0; i < wps.Length; i++) wps[i] = root.TransformPoint(new Vector3(e.path[2 * i], 0f, e.path[2 * i + 1]));
+                        if (e.kind == EntityKind.Lantern) { Safe(e, () => EnemyFactory.Lantern(ents.transform, wps)); break; }
                         lastDrone = Safe(e, () => EnemyFactory.Drone(ents.transform, wps, 0f, speed: 3f));
                         break;
                     case EntityKind.IceVent: Safe(e, () => EnemyFactory.IceVent(ents.transform, p)); break;
                     case EntityKind.TrackerIce: Safe(e, () => EnemyFactory.TrackerIce(ents.transform, p)); break;
+                    case EntityKind.Sentinel: Safe(e, () => EnemyFactory.Sentinel(ents.transform, p)); break;
+                    case EntityKind.Splitter: Safe(e, () => EnemyFactory.SplitterIce(ents.transform, p)); break;
+                    case EntityKind.Daemon: Safe(e, () => EnemyFactory.Daemon(ents.transform, p)); break;
+                    case EntityKind.Watcher: Safe(e, () => EnemyFactory.Watcher(ents.transform, p + Vector3.up * CamHeight, yaw, CamPitch)); break;
+                    case EntityKind.PuppetString: Safe(e, () => EnemyFactory.PuppetString(ents.transform, p, e.id)); break;
                     case EntityKind.Glitch: Safe(e, () => EnemyFactory.GlitchZone(ents.transform, p, GlitchRadius, delay: 1f)); break;
                     case EntityKind.HijackPad:
                         var drone = lastDrone;
                         Safe(e, () => EnemyFactory.HijackPad(ents.transform, p, yaw, drone, room));
                         break;
                     case EntityKind.AnomalyWall: break;   // geometry: the 'A' tiles' AnomalyFlicker
+                    case EntityKind.Guard: Safe(e, () => EnemyFactory.Guard(ents.transform, root, p, yaw, e.path)); break;
                     default:
                         ulong bit = 1UL << (int)e.kind;
                         if ((warned & bit) == 0) Debug.LogWarning($"[DESYNC] LEVELS: no factory for {e.kind} yet; {e.id} (and any more) skipped");
@@ -314,10 +323,11 @@ namespace Desync.Levels
                         var kit = k == Anomaly ? anomaly : walls;
                         if (k == Solid)
                         {
-                            kit.Face(p0, p1, 0f, body0, n, RoomGeo.Cap, RoomGeo.Cap);
-                            kit.Face(p0, p1, body0, body1, n, RoomGeo.RackBody * shade, RoomGeo.NavyDark * shade);
-                            kit.Face(p0, p1, body1, body1 + 0.08f, n, cfg.green * 0.7f, cfg.green * 0.7f);
-                            kit.Face(p0, p1, body1 + 0.08f, H, n, RoomGeo.Cap, RoomGeo.Cap);
+                            // Alpha flags these faces solid-in-both-layers for the world shader (hatched slab in SOURCE).
+                            kit.Face(p0, p1, 0f, body0, n, WorldFlags.Solid(RoomGeo.Cap), WorldFlags.Solid(RoomGeo.Cap));
+                            kit.Face(p0, p1, body0, body1, n, WorldFlags.Solid(RoomGeo.RackBody * shade), WorldFlags.Solid(RoomGeo.NavyDark * shade));
+                            kit.Face(p0, p1, body1, body1 + 0.08f, n, WorldFlags.Solid(cfg.green * 0.7f), WorldFlags.Solid(cfg.green * 0.7f));
+                            kit.Face(p0, p1, body1 + 0.08f, H, n, WorldFlags.Solid(RoomGeo.Cap), WorldFlags.Solid(RoomGeo.Cap));
                         }
                         else
                         {

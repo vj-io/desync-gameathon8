@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Desync.Levels
@@ -27,6 +28,14 @@ namespace Desync.Levels
         { this.id = id; this.yaw = yaw; this.phase = phase; this.pitch = pitch; this.height = height; }
     }
 
+    /// HALCYON security officer: a closed patrol loop through cell centres (two cells = back and forth), `phase` seconds in.
+    /// Kept off the grid (cells, not letters) so the grid validator and the drone waypoints stay as they are.
+    public sealed class GuardDef
+    {
+        public readonly (int c, int r)[] path; public readonly float phase;
+        public GuardDef(float phase, params (int c, int r)[] path) { this.phase = phase; this.path = path; }
+    }
+
     public sealed class RoomDef
     {
         public const float Cell = 2f;
@@ -39,6 +48,7 @@ namespace Desync.Levels
         public int storyStart;               // storyIndex of the first terminal (reading order)
         public float traceCountdown = -1f;
         public CamDef[] cams = new CamDef[0];
+        public GuardDef[] guards = new GuardDef[0];
         public float dronePhase;
         public string decal; public float decalAhead = 2f;   // floor text in front of the spawn (Room 1)
         public string[] posters;             // poster slogans (cycled); null = Posters.Default
@@ -81,6 +91,7 @@ namespace Desync.Levels
             for (char d = '1'; d <= '9'; d++)
                 if (Count(d) > 0 && System.Array.Find(cams, x => x.id == d) == null) e.Add($"camera '{d}' has no CamDef");
             if (Count(Legend.HijackPad) > 0 && Waypoints().Count < 2) e.Add("hijack pad without a drone");
+            e.AddRange(GuardRoutes.Check(this));
             return e;
         }
     }
@@ -93,6 +104,122 @@ namespace Desync.Levels
             "PRODUCTIVITY\nIS PEACE", "YOUR DATA IS\nSAFE WITH US", "WE SEE\nYOU THRIVE",
             "COMPLIANCE\nIS COMFORT", "THE CITY\nIS FINE", "SMILE. YOU ARE\nRENDERED",
         };
+    }
+
+    /// Fairness rules for officer patrols (RoomDef.Lint runs them; pure C#, like the validator). In grid cells:
+    ///   the loop stands on open floor of one level and every leg is clear of walls and furniture for an officer's body;
+    ///   it never stands on a terminal's hacking spot, and its flashlight (70 deg x 10 m, walls/racks/cabinets block it)
+    ///   never sweeps one while patrolling, corners included: a hack is never caught by a patrol, only by a chase;
+    ///   it keeps 3 cells from the spawn and the exit, and never looks at the spawn.
+    /// Beatability with the officers in the way is LevelBuilder's job (the validator with the patrol cells walled off).
+    public static class GuardRoutes
+    {
+        public const float Range = 5f, HalfAngle = 35f, Body = 0.3f;   // 10 m and the officer's radius, in cells
+
+        static bool Walkable(char c) => c == Legend.Floor || c == Legend.Poster || c == Legend.Glitch || c == Legend.Vent
+                                        || Legend.IsCamera(c) || Legend.IsWaypoint(c);
+        static bool BlocksBody(char c) => Legend.Blocks(c) || c == Legend.HijackPad || Legend.IsVoid(c);
+        static bool BlocksEye(char c) => c == Legend.Wall || c == Legend.Rack || c == Legend.Cabinet;
+
+        public static List<string> Check(RoomDef d)
+        {
+            var e = new List<string>();
+            for (int g = 0; g < d.guards.Length; g++)
+            {
+                var path = d.guards[g].path;
+                string who = "guard " + g;
+                if (path == null || path.Length == 0) { e.Add(who + " has no patrol"); continue; }
+                char level = d.LevelAt(path[0].c, path[0].r);
+                foreach (var (c, r) in path)
+                {
+                    if (!Walkable(d.At(c, r))) e.Add($"{who}: cell {c},{r} '{d.At(c, r)}' is not open floor");
+                    if (d.LevelAt(c, r) != level || Legend.RampDir(d.LevelAt(c, r)) != 0) e.Add($"{who}: cell {c},{r} is off the loop's level");
+                }
+                for (int i = 0; i < path.Length; i++)
+                    if (!ClearLeg(d, path[i], path[(i + 1) % path.Length])) e.Add($"{who}: leg {path[i]} -> {path[(i + 1) % path.Length]} is blocked");
+                var looks = Samples(path);
+                for (int r = 0; r < d.Rows; r++)
+                for (int c = 0; c < d.Cols; c++)
+                {
+                    char ch = d.At(c, r);
+                    if (d.LevelAt(c, r) != level) continue;
+                    if (ch == Legend.Terminal)
+                    {
+                        for (int k = 0; k < 4; k++)
+                        {
+                            int hc = c + (k == 0 ? 1 : k == 1 ? -1 : 0), hr = r + (k == 2 ? 1 : k == 3 ? -1 : 0);
+                            if (BlocksBody(d.At(hc, hr))) continue;
+                            foreach (var (x, y, yaw) in looks)
+                            {
+                                if (Dist(x, y, hc, hr) < 0.75f) { e.Add($"{who} stands on the hacking spot {hc},{hr}"); break; }
+                                if (Sees(d, x, y, yaw, hc, hr)) { e.Add($"{who} sees the hacking spot {hc},{hr} from {x:0.#},{y:0.#}"); break; }
+                            }
+                        }
+                    }
+                    else if (ch == Legend.Spawn || ch == Legend.Exit)
+                        foreach (var (x, y, yaw) in looks)
+                        {
+                            if (Dist(x, y, c, r) < 3f) { e.Add($"{who} comes within 3 cells of '{ch}'"); break; }
+                            if (ch == Legend.Spawn && Sees(d, x, y, yaw, c, r)) { e.Add($"{who} sees the spawn from {x:0.#},{y:0.#}"); break; }
+                        }
+                }
+            }
+            return e;
+        }
+
+        static float Dist(float x, float y, int c, int r) => (float)Math.Sqrt((c - x) * (c - x) + (r - y) * (r - y));
+
+        /// Yaw (0 = north = row decreasing) from a to b.
+        static float Yaw(float ac, float ar, float bc, float br) => (float)(Math.Atan2(bc - ac, ar - br) * 180.0 / Math.PI);
+
+        /// Where the officer stands and looks along the loop: every quarter cell with the travel yaw, and at each corner the
+        /// turn swept from the incoming to the outgoing yaw.
+        static List<(float x, float y, float yaw)> Samples((int c, int r)[] p)
+        {
+            var s = new List<(float, float, float)>();
+            int n = p.Length;
+            if (n == 1) { for (int k = 0; k < 16; k++) s.Add((p[0].c, p[0].r, k * 22.5f)); return s; }   // a post: any heading
+            for (int i = 0; i < n; i++)
+            {
+                var a = p[i]; var b = p[(i + 1) % n];
+                float yaw = Yaw(a.c, a.r, b.c, b.r), len = Dist(a.c, a.r, b.c, b.r);
+                int k = Math.Max(1, (int)(len * 4f));
+                for (int j = 0; j < k; j++) s.Add((a.c + (b.c - a.c) * j / (float)k, a.r + (b.r - a.r) * j / (float)k, yaw));
+                var prev = p[(i + n - 1) % n];
+                float y0 = Yaw(prev.c, prev.r, a.c, a.r), turn = ((yaw - y0) % 360f + 540f) % 360f - 180f;
+                for (int j = 0; j <= 8; j++) s.Add((a.c, a.r, y0 + turn * j / 8f));
+            }
+            return s;
+        }
+
+        static bool Sees(RoomDef d, float x, float y, float yaw, int c, int r)
+        {
+            float dist = Dist(x, y, c, r);
+            if (dist > Range) return false;
+            if (dist > 1e-3f && Math.Abs(((Yaw(x, y, c, r) - yaw) % 360f + 540f) % 360f - 180f) > HalfAngle) return false;
+            int c0 = (int)Math.Round(x), r0 = (int)Math.Round(y), steps = Math.Max(Math.Abs(c - c0), Math.Abs(r - r0)) * 4;
+            for (int i = 1; i < steps; i++)
+            {
+                float t = (float)i / steps;
+                int cc = (int)Math.Round(c0 + (c - c0) * t), rr = (int)Math.Round(r0 + (r - r0) * t);
+                if ((cc != c || rr != r) && BlocksEye(d.At(cc, rr))) return false;
+            }
+            return true;
+        }
+
+        /// The officer's body (Body cells around the line) never overlaps a blocking cell along the leg.
+        static bool ClearLeg(RoomDef d, (int c, int r) a, (int c, int r) b)
+        {
+            int n = (int)(Math.Max(Math.Abs(b.c - a.c), Math.Abs(b.r - a.r)) * 10) + 1;
+            for (int i = 0; i <= n; i++)
+            {
+                float t = (float)i / n, x = a.c + (b.c - a.c) * t, y = a.r + (b.r - a.r) * t;
+                for (int ox = -1; ox <= 1; ox++)
+                for (int oy = -1; oy <= 1; oy++)
+                    if (BlocksBody(d.At((int)Math.Floor(x + ox * Body + 0.5f), (int)Math.Floor(y + oy * Body + 0.5f)))) return false;
+            }
+            return true;
+        }
     }
 
     /// The six rooms (PRD 5.5) plus the Title/Ending backdrops. One new idea per room; story indices R1 0, R2 1,
@@ -129,6 +256,8 @@ namespace Desync.Levels
             {
                 index = 1, name = "EYES", storyStart = 1, spawnYaw = 0f,
                 cams = new[] { new CamDef('1', 180f), new CamDef('2', 180f, 1.5f) },
+                // the officer paces the west half of the office aisle: watch him from the gap, then go down the east side
+                guards = new[] { new GuardDef(0f, (6, 6), (10, 6)) },
                 grid = new[]
                 {
                     "###################",
@@ -154,6 +283,8 @@ namespace Desync.Levels
             {
                 index = 2, name = "ICE", storyStart = 2, spawnYaw = 0f,
                 cams = new[] { new CamDef('1', 0f, 0f, 35f) },
+                // an officer walks round the west rack pen: phase in behind his back, ICE inside, him outside
+                guards = new[] { new GuardDef(0f, (1, 2), (1, 8), (8, 8), (8, 2)) },
                 grid = new[]
                 {
                     "#####################",
@@ -179,6 +310,9 @@ namespace Desync.Levels
                 index = 3, name = "HIJACK", storyStart = 4, spawnYaw = 0f, wallHeight = 6.5f, upperHeight = 3f,
                 cams = new[] { new CamDef('1', 180f, 0f, 45f), new CamDef('2', 225f, 1.5f, 40f) },
                 dronePhase = 0f,
+                // an officer loops the ground floor east of the drone and faces the ramp on his way south: a hijacked drone
+                // body-blocks him
+                guards = new[] { new GuardDef(0f, (13, 4), (16, 4), (16, 9), (13, 9)) },
                 grid = new[]
                 {
                     "######################",
@@ -223,6 +357,8 @@ namespace Desync.Levels
             {
                 index = 4, name = "UNSTABLE", storyStart = 6, spawnYaw = 90f, traceCountdown = 90f,
                 cams = new[] { new CamDef('1', 180f), new CamDef('2', 270f, 1f), new CamDef('3', 0f, 2f) },
+                // two officers: one up and down the west lane, one along the east band under the drone loop
+                guards = new[] { new GuardDef(0f, (5, 10), (5, 4)), new GuardDef(0f, (17, 6), (11, 6)) },
                 grid = new[]
                 {
                     "######################",

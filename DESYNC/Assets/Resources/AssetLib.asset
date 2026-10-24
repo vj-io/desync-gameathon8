@@ -233,3 +233,5 @@ MonoBehaviour:
     value: {fileID: 2100000, guid: dcafd945c6a14478e80730ed62e50099, type: 2}
   - key: mat.cone.trace.xray
     value: {fileID: 2100000, guid: cad7b2a7ae3f84dd2ad84016b17258a2, type: 2}
+  - key: model.guard
+    value: {fileID: 8718654246673564673, guid: aea0fe4f856a049eb9b578535fdb1a7a, type: 3}

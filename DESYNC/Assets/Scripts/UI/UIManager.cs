@@ -23,6 +23,7 @@ namespace Desync.UI
         EventSystem _es;
         TitleScreen _title; HudScreen _hud; PauseScreen _pause; LevelSelectScreen _levels; ResultsScreen _results; RecapScreen _recap; GoalsOverlay _goals;
         FinaleScreen _finale; EndingScreen _ending;
+        StoryScreen _story; StoryAsk _ask; StoryGuide _guide;
         RunMapScreen _map; DraftScreen _draft; MarketScreen _market; CooldownScreen _cooldown; RunResultsScreen _runResults; DeepLayerScreen _deep;
         bool _built, _mapTab, _rebuild, _cbShown;
 
@@ -45,6 +46,7 @@ namespace Desync.UI
             EnsureEventSystem();
             _built = true;
             SetMode(ModeFor(SceneManager.GetActiveScene().name), true);
+            TitleEntered();
         }
 
         void OnDestroy() { if (I == this) I = null; }
@@ -70,7 +72,9 @@ namespace Desync.UI
             // bottom -> top
             _title = Make<TitleScreen>("Title");
             _ending = Make<EndingScreen>("Ending");
+            HudGuards.Create(_root);   // chase edge pulse, under the HUD
             _hud = Make<HudScreen>("Hud");
+            _guide = Make<StoryGuide>("StoryGuide");
             _recap = Make<RecapScreen>("Recap");
             _goals = Make<GoalsOverlay>("Goals");
             _finale = Make<FinaleScreen>("Finale");
@@ -82,6 +86,9 @@ namespace Desync.UI
             _runResults = Make<RunResultsScreen>("RunResults");
             _deep = Make<DeepLayerScreen>("DeepLayer");
             _title.OnDeep = () => _deep.Show();
+            _ask = Make<StoryAsk>("StoryAsk");
+            _story = Make<StoryScreen>("Story");
+            _title.OnStory = PlayStory; _ask.OnWatch = PlayStory;
             _pause = Make<PauseScreen>("Pause");
             _levels = Make<LevelSelectScreen>("LevelSelect");
 
@@ -90,6 +97,7 @@ namespace Desync.UI
             sfx.playOnAwake = false; sfx.spatialBlend = 0f; sfx.ignoreListenerPause = true;
             _results.Init(sfx);
             _draft.Init(sfx);
+            _story.Init(sfx);
         }
 
         void EnsureEventSystem()
@@ -139,8 +147,14 @@ namespace Desync.UI
             if (m == Mode.Room) _hud.Show(); else _hud.Hide();
             if (m != Mode.Room) { _pause.Hide(); _results.Hide(); _recap.Hide(); _goals.Hide(); _finale.Hide(); }
             if (m == Mode.Title || m == Mode.Ending) HideRun(true);
-            _levels.Hide(); _deep.Hide();
+            _levels.Hide(); _deep.Hide(); _ask.Hide(); _story.Hide();
+            if (m != Mode.Room) _guide.Leave();
         }
+
+        /// Title scene entered: the first-time STORY prompt, once per player (StoryAsk remembers the answer in the save).
+        internal void TitleEntered() { if (Current == Mode.Title && StoryAsk.ShouldAsk()) _ask.Show(); }
+
+        void PlayStory() { _ask.Hide(); _title.Hide(); _story.Play(); }
 
         void HideRun(bool all)
         {
@@ -153,6 +167,7 @@ namespace Desync.UI
             if (mode != LoadSceneMode.Single) return;
             DropExtraEventSystems();
             SetMode(ModeFor(s.name));
+            TitleEntered();
             if (Current == Mode.Room) { _results.Hide(); _recap.Hide(); _finale.Hide(); }
         }
 
@@ -249,7 +264,7 @@ namespace Desync.UI
             bool pause = _pause.IsOn, lockLost = _pause.LockLost, run = RunView.Active && RunState.Phase != RunPhase.Room;
             var phase = RunState.Phase;
             Unsubscribe();
-            foreach (var p in new UIPanel[] { _title, _ending, _hud, _recap, _goals, _finale, _results, _draft, _market, _cooldown, _map, _runResults, _deep, _pause, _levels })
+            foreach (var p in new UIPanel[] { _title, _ending, _hud, _recap, _goals, _finale, _results, _draft, _market, _cooldown, _map, _runResults, _deep, _pause, _levels, _story, _ask, _guide })
                 p.Hide();   // panels stop their own tweens in Hide
             var old = Canvas.gameObject;
             old.SetActive(false); Destroy(old);
@@ -257,6 +272,7 @@ namespace Desync.UI
             BuildCanvas();
             Subscribe();
             SetMode(Current, true);
+            if (Current == Mode.Room) _guide.Resume();
             if (run) OnRunPhase(phase);
             if (pause) _pause.Show(lockLost);
         }
@@ -278,6 +294,7 @@ namespace Desync.UI
             _results.Hide(); _recap.Hide(); _finale.Hide(); _levels.Hide();
             if (!GameState.Paused) _pause.Hide();
             _hud.OnRoomStarted(room);
+            _guide.RoomStarted(room);
         }
 
         void OnDeathRecap(DeathInfo d) { if (Current == Mode.Room) { _goals.Hide(); _recap.Show(d); } }
@@ -332,10 +349,15 @@ namespace Desync.UI
         {
             switch (Current)
             {
-                case Mode.Title: _title.Blocked = _deep.IsOn; _title.Tick(dt); break;
+                case Mode.Title:
+                    if (_story.IsOn) { _story.Tick(dt); break; }   // the cinematic owns the title camera and keys
+                    _title.Blocked = _deep.IsOn || _ask.IsOn; _title.Tick(dt);
+                    if (_ask.IsOn) _ask.Tick(dt);
+                    break;
                 case Mode.Room:
                     if (GameState.Paused && !_pause.IsOn && !_levels.IsOn) OnPaused(true);   // missed the event / level select just closed
                     _hud.Tick(dt);
+                    if (_guide.IsOn) _guide.Tick(dt);
                     bool tab = UIKit.GoalsKey.IsPressed() && !GameState.Paused && !_results.IsOn && !_recap.IsOn;   // TAB (hold)
                     bool breach = RunView.Active, goals = tab && !breach, map = tab && breach && RunState.Phase == RunPhase.Room;   // BREACH: TAB = run map
                     if (goals != _goals.IsOn) { if (goals) _goals.Show(); else _goals.Hide(); }

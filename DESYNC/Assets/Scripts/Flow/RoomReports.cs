@@ -102,7 +102,7 @@ namespace Desync.Flow
 
         [Serializable] class RoomsFile { public RoomRow[] rooms; }
         [Serializable] class RoomRow { public string id; public int index; public string name; public float tDev; public int parScore; }
-        [Serializable] class HintsFile { public string[] ice, melt, trace, glitch, drone, architect; }
+        [Serializable] class HintsFile { public string[] ice, melt, trace, glitch, drone, architect, guard; }
 
         static RoomsFile rooms;
         static HintsFile hints;
@@ -135,6 +135,7 @@ namespace Desync.Flow
                 DeathCause.Melt => hints.melt,
                 DeathCause.Drone => hints.drone,
                 DeathCause.Architect => hints.architect,
+                DeathCause.Guard => hints.guard,
                 _ => hints.trace,   // Alarm, TraceTimer
             };
             return list == null || list.Length == 0 ? null : list[(n % list.Length + list.Length) % list.Length];

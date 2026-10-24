@@ -28,5 +28,10 @@
     "The Architect's gaze turns a full circle every 14 seconds and sees both layers. Flipping does not hide you from it.",
     "Move while the gaze cone points away from you. Timing matters more than cover here.",
     "Each shield terminal sits in a closed pod. Phase into the pod in SOURCE, flip back, then hack."
+  ],
+  "guard": [
+    "Security officers only exist in RENDER. Flip to SOURCE and they freeze, then lose you.",
+    "An officer winds up for about a third of a second before he swings. Step back or flip.",
+    "Walls stop officers in RENDER. Break line of sight and they search, then return to their post."
   ]
 }

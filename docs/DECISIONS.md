@@ -31,3 +31,5 @@
 **D-015 Human guards.** HALCYON security officers are RENDER-only people: patrol, chase (slower than the player), telegraphed strike; walls stop them; flipping to SOURCE escapes them and freezes them. Death cause `Guard`.
 
 **D-016 Story mode.** A first-time prompt on the title offers a 60–90 s in-engine story (text, motion, the game's own scenes and sound; no voice-over), then Room 1 with story-guided prompts. Replayable from the title menu.
+
+**D-017 Graze cap bonus.** `Modifiers.GrazeCapBonus` (appended, default 0) raises the per-ICE graze cap to `GrazeCapPerIce + GrazeCapBonus`. Only `redline_surge` sets it: +1 per REDLINE exit in the cleared room, for the next room played only.

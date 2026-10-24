@@ -33,6 +33,7 @@ namespace Desync.Audio
             EnemyEvents.SentinelCharge += OnSentinelCharge;
             EnemyEvents.SentinelPulse += OnSentinelPulse;
             EnemyEvents.SplitterSplit += OnSplitterSplit;
+            EnemyEvents.WatcherSpotted += OnWatcherSpotted;
             EnemyEvents.DaemonCrossed += OnDaemonCrossed;
             EnemyEvents.AuditorDrone += OnAuditorDrone;
             EnemyEvents.PuppetString += OnPuppetString;
@@ -49,6 +50,7 @@ namespace Desync.Audio
             RunEvents.Leave += OnUiClick;
             RunEvents.CashOut += OnUiClick;
             RunEvents.GoDeeper += OnUiClick;
+            SubscribeGuards();
         }
 
         void UnsubscribeCues()
@@ -60,6 +62,7 @@ namespace Desync.Audio
             EnemyEvents.Alerted -= OnAlerted;
             EnemyEvents.SentinelCharge -= OnSentinelCharge;
             EnemyEvents.SentinelPulse -= OnSentinelPulse;
+            EnemyEvents.WatcherSpotted -= OnWatcherSpotted;
             EnemyEvents.SplitterSplit -= OnSplitterSplit;
             EnemyEvents.DaemonCrossed -= OnDaemonCrossed;
             EnemyEvents.AuditorDrone -= OnAuditorDrone;
@@ -77,6 +80,7 @@ namespace Desync.Audio
             RunEvents.Leave -= OnUiClick;
             RunEvents.CashOut -= OnUiClick;
             RunEvents.GoDeeper -= OnUiClick;
+            UnsubscribeGuards();
         }
 
         // ------------------------------------------------------------------ scoring juice
@@ -158,6 +162,7 @@ namespace Desync.Audio
         void OnSentinelCharge(Vector3 p) => PlayEnemyCue(EnemyCue.SentinelCharge, p);
         void OnSentinelPulse(Vector3 p) => PlayEnemyCue(EnemyCue.SentinelPulse, p);
         void OnSplitterSplit(Vector3 p) => PlayEnemyCue(EnemyCue.SplitterSplit, p);
+        void OnWatcherSpotted(Vector3 p) => PlayEnemyCue(EnemyCue.WatcherBeam, p);
         void OnDaemonCrossed(Vector3 p, bool intoRender) => Play3D(_bank.daemonCross, 0.95f, intoRender ? 1f : 0.8f, PHigh, p);
         void OnAuditorDrone(Vector3 p, bool dispatched) { if (dispatched) Play3D(_bank.trackerSting, 0.8f, 1.3f, PHigh, p); }
         void OnPuppetString(string id) => Play2D(_bank.accessGranted, 0.7f, 1.25f, PHigh);
@@ -185,6 +190,7 @@ namespace Desync.Audio
 
         void UpdateLanternHum(float dt)
         {
+            if (PlayerRef.Exists && LanternBeam.LanternNearest(PlayerRef.Position, out var lp) && (lp - PlayerRef.Position).sqrMagnitude < 15f * 15f) LanternNear(lp);
             bool on = Time.unscaledTime < _lanternUntil && !LayerState.InSource && GameState.Alive && !GameState.Paused && _lantern.clip;
             float target = on ? LanternGain : 0f;
             _lanternVol = Mathf.MoveTowards(_lanternVol, target, dt * LanternGain / (target > _lanternVol ? LanternIn : LanternOut));

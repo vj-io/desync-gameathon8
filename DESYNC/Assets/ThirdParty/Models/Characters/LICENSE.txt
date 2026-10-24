@@ -1,0 +1,8 @@
+"Man in Suit" by Quaternius
+Licence: CC0 1.0 Universal (public domain dedication), https://creativecommons.org/publicdomain/zero/1.0/
+Source: https://poly.pizza/m/mQnGoME1ez (also part of Quaternius' animated character packs, https://quaternius.com)
+
+GuardSuit.json is derived from it: converted from glTF to Unity space (metres, +Z forward), scaled to 1.8 m, recoloured as
+a HALCYON security uniform (navy suit, charcoal trousers, cyan cuffs and collar, magenta tie), a baton added to the right
+hand, and four clips (Man_Idle, Man_Walk, Man_Run, Man_SwordSlash) resampled at 30 frames per second.
+Converter: .work/guards/tools/glb2guard.py. Unity side: Assets/Scripts/Enemies/GuardModel.cs.

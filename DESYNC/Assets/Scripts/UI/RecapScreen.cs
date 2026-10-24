@@ -60,7 +60,8 @@ namespace Desync.UI
             UIKit.Place(_any.rectTransform, Anc.B, new Vector2(0, 12), new Vector2(980, 32));
         }
 
-        /// CAUSE line: ICE-<id> | MELT 100% | TRACE LOCKDOWN | GLITCH ZONE | DRONE | ARCHITECT. No allocation.
+        /// CAUSE line: ICE-<id> | MELT 100% | TRACE LOCKDOWN | GLITCH ZONE (SYSTEM COLLAPSE when the COMPILER's room collapsed
+        /// on the player) | DRONE | ARCHITECT. No allocation.
         internal static string CauseText(DeathCause cause, string killerId)
         {
             switch (cause)
@@ -71,7 +72,8 @@ namespace Desync.UI
                 case DeathCause.TraceTimer: return "TRACE LOCKDOWN";
                 case DeathCause.Drone: return "DRONE";
                 case DeathCause.Architect: return "ARCHITECT";
-                case DeathCause.Glitch: return "GLITCH ZONE";
+                case DeathCause.Glitch: return killerId == Desync.Enemies.Compiler.KillerId ? "SYSTEM COLLAPSE" : "GLITCH ZONE";
+                case DeathCause.Guard: return "SECURITY OFFICER";
                 default: return "UNKNOWN";
             }
         }
