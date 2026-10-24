@@ -8,7 +8,7 @@ namespace Desync.UI
 {
     /// Title scene overlay + attract mode (orbiting camera, backdrop flips RENDER/SOURCE every ~3 s) + mode menu:
     /// CAMPAIGN BREACH / QUICK BREACH / CLASSIC (6 ROOMS) / DAILY (greyed, soon) / DEEP LAYER (locked until the first ARCHITECT kill; opens
-    /// the Deep Layer select). Mouse (hover + click), arrows / WASD / pad d-pad to move, SPACE / Enter / pad A / Start or a click on the
+    /// the Deep Layer select) / STORY (replays the story cinematic). Mouse (hover + click), arrows / WASD / pad d-pad to move, SPACE / Enter / pad A / Start or a click on the
     /// backdrop to start the highlighted mode.
     public sealed class TitleScreen : UIPanel
     {
@@ -16,8 +16,8 @@ namespace Desync.UI
         TMP_Text _tag, _intro, _meta, _sensVal, _caption, _goals;
         Slider _sens;
         UIButton[] _items; int _sel;
-        static readonly RunMode[] Modes = { RunMode.Campaign, RunMode.Quick, RunMode.Classic, RunMode.Daily, RunMode.Campaign };   // [4] opens the Deep Layer select
-        static readonly string[] Labels = { "CAMPAIGN BREACH", "QUICK BREACH", "CLASSIC (6 ROOMS)", "DAILY · SOON", "DEEP LAYER" };
+        static readonly RunMode[] Modes = { RunMode.Campaign, RunMode.Quick, RunMode.Classic, RunMode.Daily, RunMode.Campaign, RunMode.Classic };   // [4] opens the Deep Layer select, [5] plays the STORY
+        static readonly string[] Labels = { "CAMPAIGN BREACH", "QUICK BREACH", "CLASSIC (6 ROOMS)", "DAILY · SOON", "DEEP LAYER", "STORY" };
         static readonly string[] Blurbs =
         {
             "BRANCHING MAP · EXPLOITS · BOSSES",
@@ -25,12 +25,17 @@ namespace Desync.UI
             "THE ORIGINAL SIX ROOMS · ~8 MIN",
             "ONE SHARED SEED A DAY · SOON",
             "",   // Deep Layer: DeepBlurb
+            "WHO IS ECHO? · THE STORY IN 80 S",
         };
         /// Highlighted on every Show. CLASSIC keeps "click / SPACE / pad = jack in to Room 01" as the one-press path.
-        internal const int DefaultItem = 2, DailyItem = 3, DeepItem = 4;
+        internal const int DefaultItem = 2, DailyItem = 3, DeepItem = 4, StoryItem = 5;
+        /// Reading order (two per row) = arrow order: STORY sits beside CAMPAIGN, so CLASSIC still wraps to CAMPAIGN.
+        static readonly int[] Order = { 0, StoryItem, 1, 2, 3, 4 };
         internal int Selected => _sel;
         /// UIManager: opens the Deep Layer select; Blocked = that screen is up, so the menu ignores the keys it handles.
         public System.Action OnDeep;
+        /// UIManager: plays the STORY cinematic.
+        public System.Action OnStory;
         public bool Blocked;
         bool _deepOpen;
         internal bool DeepOpen => _deepOpen;
@@ -74,8 +79,9 @@ namespace Desync.UI
             for (int i = 0; i < Modes.Length; i++)
             {
                 int k = i;
-                var col = i == DailyItem || i == DeepItem ? new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f) : i == 0 ? UIKit.Magenta : UIKit.Cyan;   // Deep: Show() colours it by unlock
-                var pos = i == DeepItem ? new Vector2(0, -284) : new Vector2(i % 2 == 0 ? -250 : 250, i < 2 ? -100 : -192);
+                var col = i == DailyItem || i == DeepItem ? new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f) : i == 0 ? UIKit.Magenta : i == StoryItem ? UIKit.Green : UIKit.Cyan;   // Deep: Show() colours it by unlock
+                int slot = System.Array.IndexOf(Order, i);
+                var pos = new Vector2(slot % 2 == 0 ? -250 : 250, -100 - 92 * (slot / 2));
                 var b = UIButton.Create(card.transform, "Mode" + i, Labels[i], Anc.C, pos, new Vector2(470, 80), 30, col, () => Pick(k));
                 b.Label.characterSpacing = 3f;
                 if (i == DailyItem) b.Hot = col;   // greyed: no hover highlight
@@ -116,7 +122,7 @@ namespace Desync.UI
             if (_items[_sel] && _sel != i) _items[_sel].transform.localScale = Vector3.one;
             _sel = i;
             for (int k = 0; k < _items.Length; k++) _items[k].SetSelected(k == i);
-            _meta.SetText((i == DeepItem ? DeepBlurb() : Blurbs[i]) + "  ·  ↑↓←→ CHOOSE  ·  CLICK, SPACE OR PAD A TO " + (i == DeepItem ? "OPEN" : "JACK IN"));
+            _meta.SetText((i == DeepItem ? DeepBlurb() : Blurbs[i]) + "  ·  ↑↓←→ CHOOSE  ·  CLICK, SPACE OR PAD A TO " + (i == DeepItem ? "OPEN" : i == StoryItem ? "WATCH" : "JACK IN"));
             UIKit.Kill(ref _pulse);
             _pulse = Tween.Scale(_items[i].transform, 1f, 1.04f, 0.55f, Ease.InOutSine, cycles: -1, cycleMode: CycleMode.Yoyo, useUnscaledTime: true);
         }
@@ -138,6 +144,7 @@ namespace Desync.UI
         {
             if (_started) return;
             if (_sel == DeepItem) { OnDeep?.Invoke(); return; }   // the select screen starts the run
+            if (_sel == StoryItem) { OnStory?.Invoke(); return; }   // the story ends in Room 1
             _started = true;
             UIKit.Kill(ref _pulse);
             _items[_sel].Label.SetText("JACKING IN...");
@@ -221,13 +228,13 @@ namespace Desync.UI
             if (want != _introShown) { _introShown = want; _intro.maxVisibleCharacters = want; }
         }
 
-        /// The next selectable item in `step` direction, wrapping: DAILY never, DEEP LAYER only once it is open.
+        /// The next selectable item in `step` direction (Order), wrapping: DAILY never, DEEP LAYER only once it is open.
         int NextSel(int step)
         {
-            int n = _items.Length;
+            int n = Order.Length, at = System.Array.IndexOf(Order, _sel);
             for (int k = 1; k <= n; k++)
             {
-                int c = ((_sel + step * k) % n + n) % n;
+                int c = Order[((at + step * k) % n + n) % n];
                 if (c != DailyItem && (c != DeepItem || _deepOpen)) return c;
             }
             return _sel;
