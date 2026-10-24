@@ -21,12 +21,20 @@ namespace Desync.Enemies
         static readonly Color Idle = new Color(1f, 0.55f, 0.9f), Seeing = new Color(1f, 0.62f, 0.1f), Blind = new Color(0f, 0.55f, 0.6f);
 
         float _dwell, _last, _mult = 1f, _spotRange = -1f;
-        int _state = -1;
+        int _state = -1, _kind = -1;
 
-        /// Cameras and drones see CameraRangeMult further (the Architect's gaze is not a camera).
-        float Mult => bothLayers ? 1f : GameState.Mods.CameraRangeMult;
+        /// 1 = security camera (CameraSweep above it), 2 = guard drone (DronePatrol above it), 0 = anything else. Found on
+        /// first use, so cones in prebuilt scenes are classified too.
+        int Kind => _kind >= 0 ? _kind : _kind = GetComponentInParent<CameraSweep>() ? 1 : GetComponentInParent<DronePatrol>() ? 2 : 0;
 
-        public bool Active => !Suppressed && (bothLayers || Jammer || !LayerState.InSource);
+        /// Cameras and drones see CameraRangeMult further (the Architect's gaze is not a camera); SIGNAL JAM shortens drones.
+        float Mult => bothLayers ? 1f : GameState.Mods.CameraRangeMult * (EnemyFlags.SignalJam && Kind == 2 ? EnemyFlags.SignalJamRange : 1f);
+
+        /// Effective detection range this frame.
+        public float Range => range * Mult;
+
+        /// BLIND CAMS switches camera cones off (drones and other sensors still see).
+        public bool Active => !Suppressed && !(EnemyFlags.BlindCams && Kind == 1) && (bothLayers || Jammer || !LayerState.InSource);
         public float Dwell => _dwell;
 
         void Update()
@@ -58,7 +66,7 @@ namespace Desync.Enemies
             if (!target) return false;
             Vector3 eye = transform.position, d = target.position - eye;
             float m = d.magnitude;
-            if (m > range * Mult || Vector3.Angle(transform.forward, d) > angle * 0.5f) return false;
+            if (m > Range || Vector3.Angle(transform.forward, d) > angle * 0.5f) return false;
             return m < 1e-3f || !Physics.Raycast(eye, d / m, m, EnemyKit.SightMask, QueryTriggerInteraction.Ignore);
         }
 

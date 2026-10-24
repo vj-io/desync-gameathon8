@@ -6,9 +6,11 @@ namespace Desync.Enemies
     /// (iceSpawnIntervalTraced during a TRACE) of SOURCE time it winds up for iceWindup (IceWindup + vent glow) and spawns a
     /// pooled hunter (IceSpawned), unless iceMaxAlive hunters are already out. The pool is prewarmed by EnemyFactory.
     /// Also publishes GameState.IceAlive / NearestIce every frame (IceHunter.Publish) for the spatial ICE hum.
+    /// ICE SWARM (EnemyFlags): one more hunter may be out (iceMaxAlive + 1), released from the reserve `swarm`.
     public class IceVent : MonoBehaviour, IResettable
     {
         public IceHunter[] pool;
+        public IceHunter swarm;     // reserve hunter, built on the first frame under ICE SWARM
         public Renderer glow;
 
         float _t, _last;
@@ -19,12 +21,13 @@ namespace Desync.Enemies
         void Update()
         {
             IceHunter.Publish();
+            if (EnemyFlags.IceSwarm && !swarm) swarm = EnemyFactory.SwarmHunter(transform);   // once per room
             float dt = EnemyKit.Step(ref _last);
             var c = GameConfig.I;
             bool live = LayerState.InSource && GameState.Alive && !GameState.Cinematic && PlayerRef.Exists;
             float interval = GameState.TraceActive ? c.iceSpawnIntervalTraced : c.iceSpawnInterval;
             IceHunter free = Free();
-            bool canSpawn = free && IceHunter.Alive < c.iceMaxAlive;
+            bool canSpawn = free && IceHunter.Alive < c.iceMaxAlive + (EnemyFlags.IceSwarm ? 1 : 0);
             if (live) _t += dt;
             if (!canSpawn) _t = Mathf.Min(_t, interval - c.iceWindup);   // a wind-up always precedes a spawn
 
@@ -44,7 +47,7 @@ namespace Desync.Enemies
         IceHunter Free()
         {
             foreach (var h in pool) if (h && !h.gameObject.activeSelf) return h;
-            return null;
+            return EnemyFlags.IceSwarm && swarm && !swarm.gameObject.activeSelf ? swarm : null;
         }
 
         public void ResetState()
@@ -55,6 +58,7 @@ namespace Desync.Enemies
             _winding = false;
             if (glow) glow.enabled = false;
             foreach (var h in pool) if (h) h.Despawn();
+            if (swarm) swarm.Despawn();
         }
     }
 }

@@ -9,6 +9,8 @@ namespace Desync.Enemies
     /// Body-blocked by a hijacked drone. Alive = active hunters across the room (OnEnable/OnDisable).
     /// Every spawn gets a new id "ICE-<n>" (n counts spawns this attempt). GRAZE: a pass that spends >= GrazeTime in SOURCE
     /// within GrazeRange of the player without touching raises GameEvents.Grazed(id) when it ends.
+    /// Subclasses change where it heads (Target), how fast (Speed) and whether it waits frozen in RENDER instead of
+    /// despawning (DespawnsInRender): TrackerHunter (breadcrumb trail), PatrolHunter (AUDITOR pillars).
     public class IceHunter : MonoBehaviour, IResettable
     {
         public const float Radius = 0.35f, Repath = 0.2f, GrazeRange = 1f, GrazeTime = 0.15f;
@@ -40,7 +42,16 @@ namespace Desync.Enemies
         /// Ids restart at ICE-1 (IceVent calls this on room load and on REBOOT).
         public static void ResetIds() => _spawns = 0;
 
-        static float Speed => GameConfig.I.iceSpeed * GameState.Mods.IceSpeedMult;
+        /// Move speed this frame (m/s).
+        protected virtual float Speed => GameConfig.I.iceSpeed * GameState.Mods.IceSpeedMult;
+        /// Where to head this frame; false = hold still (still lethal on touch). Hunters chase the player.
+        protected virtual bool Target(out Vector3 target) { target = PlayerRef.Position; return true; }
+        /// Hunters vanish iceDespawn s after the player returns to RENDER; persistent ICE waits there frozen.
+        protected virtual bool DespawnsInRender => true;
+        protected virtual void OnSpawned() { }
+        protected virtual void Animate(float dt) { if (visual) visual.Rotate(0f, 240f * dt, 0f, Space.Self); }
+        /// Re-issue the NavMesh destination on the next frame (the target moved to a new point).
+        protected void Retarget() => _repath = 0f;
 
         void OnEnable() { Active.Add(this); Publish(); }
         void OnDisable() { Active.Remove(this); GameState.IceAlive = Active.Count; }
@@ -81,6 +92,7 @@ namespace Desync.Enemies
             _repath = 0f;
             _renderSince = -1f;
             Show(true);
+            OnSpawned();
         }
 
         public void Despawn()
@@ -102,7 +114,7 @@ namespace Desync.Enemies
                 if (_renderSince < 0f) _renderSince = RoomClock.Time;
                 if (chasing) agent.isStopped = true;
                 Show((Time.frameCount & 4) == 0);
-                if (RoomClock.Time - _renderSince >= GameConfig.I.iceDespawn) Despawn();
+                if (DespawnsInRender && RoomClock.Time - _renderSince >= GameConfig.I.iceDespawn) Despawn();
                 return;
             }
             if (_renderSince >= 0f) { _renderSince = -1f; Show(true); }
@@ -111,19 +123,22 @@ namespace Desync.Enemies
             if (chasing) agent.isStopped = frozen;
             if (frozen) { if (!GameState.Alive) _graze = 0f; return; }
 
-            Vector3 target = PlayerRef.Position;
+            bool moving = Target(out Vector3 target);
+            float speed = Speed;
             if (chasing)
             {
+                agent.isStopped = !moving;
+                agent.speed = speed;
                 _repath -= dt;
-                if (_repath <= 0f) { _repath = Repath; agent.SetDestination(target); }
+                if (moving && _repath <= 0f) { _repath = Repath; agent.SetDestination(target); }
             }
-            else
+            else if (moving)
             {
                 var p = transform.position;
-                transform.position = Vector3.MoveTowards(p, new Vector3(target.x, p.y, target.z), Speed * dt);
+                transform.position = Vector3.MoveTowards(p, new Vector3(target.x, p.y, target.z), speed * dt);
             }
             BodyBlock(chasing);
-            if (visual) visual.Rotate(0f, 240f * dt, 0f, Space.Self);
+            Animate(dt);
             Vector3 c = transform.position + Centre;
             if (EnemyKit.TouchesPlayer(c, Radius))
             {

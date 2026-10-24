@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Desync.Enemies
 {
-    /// Guard drone. Movement is KINEMATIC and deterministic: it flies a closed loop through the waypoints at droneSpeed,
+    /// Guard drone. Movement is KINEMATIC and deterministic: it flies a closed loop through the waypoints at Speed,
     /// advanced by RoomClock deltas (no NavMeshAgent), hovering droneHover above them. RENDER: visible, solid (layer Drone),
     /// kills on body touch. SOURCE: hidden + harmless, but keeps flying. On a new Last-Known-Position (TraceSystem) it
     /// flies straight to it if the line is clear of walls, scans for HoldTime, flies back to where it left the loop and resumes.
@@ -16,6 +16,9 @@ namespace Desync.Enemies
         public Transform body;           // visual root (bobs; hidden in SOURCE)
         public Collider[] colliders;
         public HijackedDrone hijack;
+        public float speed = -1f;        // m/s along the loop and when investigating; <= 0 = GameConfig.droneSpeed (classic rooms)
+
+        public float Speed => speed > 0f ? speed : GameConfig.I.droneSpeed;
 
         enum Mode { Patrol, Investigate, Hold, Return, Rebooting }
 
@@ -48,14 +51,14 @@ namespace Desync.Enemies
             return w[0] + Vector3.up * hover;
         }
 
-        Vector3 PathPos() => Evaluate(waypoints, _patrolT * GameConfig.I.droneSpeed);
+        Vector3 PathPos() => Evaluate(waypoints, _patrolT * Speed);
 
         void Update()
         {
             float dt = EnemyKit.Step(ref _last);
             if (hijack && hijack.Active) { Visibility(true, false); return; }   // HijackedDrone drives the transform
             if (GameState.Cinematic) dt = 0f;
-            float speed = GameConfig.I.droneSpeed;
+            float step = Speed * dt;
             Vector3 prev = _pos;
 
             switch (_mode)
@@ -66,7 +69,7 @@ namespace Desync.Enemies
                     CheckLkp();
                     break;
                 case Mode.Investigate:
-                    _pos = Vector3.MoveTowards(_pos, _target, speed * dt);
+                    _pos = Vector3.MoveTowards(_pos, _target, step);
                     if ((_pos - _target).sqrMagnitude < 1e-4f) { _mode = Mode.Hold; _timer = HoldTime; }
                     break;
                 case Mode.Hold:
@@ -75,7 +78,7 @@ namespace Desync.Enemies
                     if (_timer <= 0f) _mode = Mode.Return;
                     break;
                 case Mode.Return:
-                    _pos = Vector3.MoveTowards(_pos, _leave, speed * dt);
+                    _pos = Vector3.MoveTowards(_pos, _leave, step);
                     if ((_pos - _leave).sqrMagnitude < 1e-4f) _mode = Mode.Patrol;
                     break;
                 case Mode.Rebooting:
@@ -156,7 +159,7 @@ namespace Desync.Enemies
             _vis = -1;
             if (waypoints == null || waypoints.Length == 0) waypoints = new[] { transform.position - Vector3.up * GameConfig.I.droneHover };
             _pos = PathPos();
-            Vector3 ahead = Evaluate(waypoints, _patrolT * GameConfig.I.droneSpeed + 0.1f) - _pos;
+            Vector3 ahead = Evaluate(waypoints, _patrolT * Speed + 0.1f) - _pos;
             _yaw = ahead.sqrMagnitude > 1e-6f ? Mathf.Atan2(ahead.x, ahead.z) * Mathf.Rad2Deg : transform.eulerAngles.y;
             transform.SetPositionAndRotation(_pos, Quaternion.Euler(0f, _yaw, 0f));
             if (body) body.gameObject.SetActive(true);

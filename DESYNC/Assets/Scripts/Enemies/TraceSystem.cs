@@ -52,7 +52,7 @@ namespace Desync.Enemies
             float dt = EnemyKit.Step(ref _last);
             if (GameState.TraceActive)
             {
-                GameState.TraceRemaining -= dt;
+                GameState.TraceRemaining -= dt * (EnemyFlags.LogWipe ? EnemyFlags.LogWipeDecay : 1f);
                 if (GameState.TraceRemaining <= 0f)
                 {
                     GameState.TraceActive = false;

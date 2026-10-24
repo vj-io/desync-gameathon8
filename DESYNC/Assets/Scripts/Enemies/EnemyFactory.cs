@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.AI;
+using Boss = Desync.Enemies.Auditor;
 
 namespace Desync.Enemies
 {
@@ -25,13 +26,34 @@ namespace Desync.Enemies
         static Color Cyan => GameConfig.I.cyan;
 
         /// Wall/ceiling security camera. yaw = sweep centre (world deg), pitch = downward tilt (deg). phase offsets the sweep (s).
+        /// Classic-room stats from GameConfig (60 deg x 8 m, sweeping +/-45 deg over 3 s one way).
         public static GameObject Camera(Transform parent, Vector3 pos, float yaw, float pitch = 20f, float phase = 0f)
         {
             var c = GameConfig.I;
+            return BuildCamera(parent, pos, yaw, pitch, phase, c.cameraConeAngle, c.cameraConeRange, -1f, -1f);
+        }
+
+        /// Generated-room fixed camera (spec: 60 deg cone, 12 m, TRACE after the usual window). Never moves.
+        public static GameObject FixedCamera(Transform parent, Vector3 pos, float yaw, float pitch = 20f, float angle = 60f, float range = 12f) =>
+            BuildCamera(parent, pos, yaw, pitch, 0f, angle, range, 0f, -1f);
+
+        /// Generated-room sweep camera (spec: 90 deg arc, 8 s period, 10 m). `arc` = the whole angle the cone covers over a
+        /// sweep (the generator validates against that wedge), so the cone's centre travels +/-(arc - coneAngle)/2;
+        /// `period` = there and back.
+        public static GameObject SweepCamera(Transform parent, Vector3 pos, float yaw, float pitch = 20f, float phase = 0f,
+                                             float arc = 90f, float period = 8f, float range = 10f, float coneAngle = 30f) =>
+            BuildCamera(parent, pos, yaw, pitch, phase, coneAngle, range, Mathf.Max(0f, (arc - coneAngle) * 0.5f), period * 0.5f);
+
+        static GameObject BuildCamera(Transform parent, Vector3 pos, float yaw, float pitch, float phase, float coneAngle, float range,
+                                      float halfAngle, float oneWay)
+        {
             var root = EnemyKit.Root("SecurityCamera", parent, pos, yaw);
             EnsureTraceSystem(root.transform);
+            var sweep = root.AddComponent<CameraSweep>();
+            sweep.halfAngle = halfAngle;
+            sweep.oneWay = oneWay;
             var pivot = EnemyKit.Child("Pivot", root.transform, Vector3.zero);
-            pivot.localRotation = Quaternion.Euler(0f, CameraSweep.Offset(phase), 0f);
+            pivot.localRotation = Quaternion.Euler(0f, sweep.OffsetAt(phase), 0f);
             var tilt = EnemyKit.Child("Tilt", pivot, Vector3.zero);
             tilt.localRotation = Quaternion.Euler(pitch, 0f, 0f);
 
@@ -51,9 +73,8 @@ namespace Desync.Enemies
                 EnemyKit.MeshObj("Mount", root.transform, m.ToMesh("CameraMount"), world);
             }
             var eye = EnemyKit.Child("Eye", tilt, new Vector3(0f, 0f, lensZ));
-            AddCone(eye, c.cameraConeAngle, c.cameraConeRange, true, false);
+            AddCone(eye, coneAngle, range, true, false);
 
-            var sweep = root.AddComponent<CameraSweep>();
             sweep.pivot = pivot;
             sweep.phase = phase;
             return root;
@@ -62,6 +83,16 @@ namespace Desync.Enemies
         /// Hovering guard drone looping through floor-level waypoints (hover height from GameConfig). Kills on body touch.
         /// Kinematic, RoomClock-driven loop (see DronePatrol). Hijackable through a HijackPad (HijackedDrone component).
         public static GameObject Drone(Transform parent, Vector3[] waypoints, float phase = 0f)
+        {
+            var c = GameConfig.I;
+            return BuildDrone(parent, waypoints, phase, -1f, c.droneConeAngle, c.droneConeRange);
+        }
+
+        /// Generated-room guard drone (spec: patrol 3 m/s, 10 m cone; 45 deg). Same drone as above with its own stats.
+        public static GameObject Drone(Transform parent, Vector3[] waypoints, float phase, float speed = 3f, float coneRange = 10f, float coneAngle = 45f) =>
+            BuildDrone(parent, waypoints, phase, speed, coneAngle, coneRange);
+
+        static GameObject BuildDrone(Transform parent, Vector3[] waypoints, float phase, float speed, float coneAngle, float coneRange)
         {
             var c = GameConfig.I;
             var wps = waypoints != null && waypoints.Length > 0 ? (Vector3[])waypoints.Clone()
@@ -93,12 +124,13 @@ namespace Desync.Enemies
             }
             var eye = EnemyKit.Child("Eye", root.transform, new Vector3(0f, 0f, 0.44f));
             eye.localRotation = Quaternion.Euler(12f, 0f, 0f);
-            var cone = AddCone(eye, c.droneConeAngle, c.droneConeRange, false, false);
+            var cone = AddCone(eye, coneAngle, coneRange, false, false);
 
             var hijack = root.AddComponent<HijackedDrone>();
             var patrol = root.AddComponent<DronePatrol>();
             patrol.waypoints = wps;
             patrol.phase = phase;
+            patrol.speed = speed;
             patrol.cone = cone;
             patrol.body = body;
             patrol.colliders = new Collider[] { col };
@@ -110,7 +142,7 @@ namespace Desync.Enemies
             hijack.hijackMat = EnemyKit.Mat("mat.hijacked", Cyan);
             hijack.colliders = new Collider[] { col };
 
-            float d = phase * c.droneSpeed;
+            float d = phase * patrol.Speed;
             Vector3 p = DronePatrol.Evaluate(wps, d), ahead = DronePatrol.Evaluate(wps, d + 0.1f) - p;
             ahead.y = 0f;
             root.transform.SetPositionAndRotation(p, ahead.sqrMagnitude > 1e-6f ? Quaternion.LookRotation(ahead) : Quaternion.identity);
@@ -122,32 +154,54 @@ namespace Desync.Enemies
         {
             var c = GameConfig.I;
             var root = EnemyKit.Root("IceVent", parent, pos, 0f);
+            var vent = root.AddComponent<IceVent>();
+            vent.glow = VentBody(root.transform);
+            vent.pool = new IceHunter[Mathf.Clamp(c.iceMaxAlive, 1, 6)];
+            for (int i = 0; i < vent.pool.Length; i++) vent.pool[i] = BuildHunter<IceHunter>(root.transform, i, false);
+            return root;
+        }
+
+        /// The ICE SWARM reserve hunter, built by the vent itself on its first frame under that mutator (keeps classic
+        /// room contents unchanged).
+        internal static IceHunter SwarmHunter(Transform vent) => BuildHunter<IceHunter>(vent, 9, false);
+
+        /// Tracker ICE nest (spec enemy 5) on an ICE marker: after iceSpawnInterval of SOURCE time it releases one tracker
+        /// that walks the player's SOURCE breadcrumb trail (last 6 s) at 4.0 m/s. Same vent body, the tracker has its own
+        /// silhouette (needle + orbiting shards, fast spin, pulse) in the ICE colour.
+        public static GameObject TrackerIce(Transform parent, Vector3 pos)
+        {
+            var root = EnemyKit.Root("TrackerNest", parent, pos, 0f);
+            var nest = root.AddComponent<TrackerNest>();
+            nest.glow = VentBody(root.transform);
+            nest.hunter = BuildHunter<TrackerHunter>(root.transform, 0, true);
+            return root;
+        }
+
+        /// Floor grate (model.vent or procedural) + the hidden wind-up glow ring.
+        static Renderer VentBody(Transform root)
+        {
+            var c = GameConfig.I;
             var world = EnemyKit.World;
-            if (!EnemyKit.Model("model.vent", root.transform, 1.3f, world, true, out _))
+            if (!EnemyKit.Model("model.vent", root, 1.3f, world, true, out _))
             {
                 var b = new MeshBuilder();
                 b.Box(new Vector3(0f, 0.03f, 0f), new Vector3(1.4f, 0.06f, 1.4f), EnemyKit.Charcoal);
                 for (int i = -2; i <= 2; i++) b.Box(new Vector3(i * 0.24f, 0.075f, 0f), new Vector3(0.07f, 0.05f, 1.15f), EnemyKit.Navy);
                 b.Box(new Vector3(0f, 0.065f, 0.66f), new Vector3(1.4f, 0.03f, 0.06f), c.danger);
                 b.Box(new Vector3(0f, 0.065f, -0.66f), new Vector3(1.4f, 0.03f, 0.06f), c.danger);
-                EnemyKit.MeshObj("Grate", root.transform, b.ToMesh("VentGrate"), world);
+                EnemyKit.MeshObj("Grate", root, b.ToMesh("VentGrate"), world);
             }
             var gb = new MeshBuilder();
             gb.Ring(0f, 0.7f, 24, 0.11f, Color.white);
-            var glow = EnemyKit.MeshObj("Glow", root.transform, gb.ToMesh("VentGlow", false), EnemyKit.Mat("mat.ice", c.danger));
+            var glow = EnemyKit.MeshObj("Glow", root, gb.ToMesh("VentGlow", false), EnemyKit.Mat("mat.ice", c.danger));
             glow.enabled = false;
-
-            var vent = root.AddComponent<IceVent>();
-            vent.glow = glow;
-            vent.pool = new IceHunter[Mathf.Clamp(c.iceMaxAlive, 1, 6)];
-            for (int i = 0; i < vent.pool.Length; i++) vent.pool[i] = BuildHunter(root.transform, i);
-            return root;
+            return glow;
         }
 
-        static IceHunter BuildHunter(Transform parent, int i)
+        static T BuildHunter<T>(Transform parent, int i, bool tracker) where T : IceHunter
         {
             var c = GameConfig.I;
-            var go = new GameObject("ICE_" + i);
+            var go = new GameObject((tracker ? "TRACKER_" : "ICE_") + i);
             go.SetActive(false);
             go.transform.SetParent(parent, false);
             go.layer = GameLayers.Ice;
@@ -165,7 +219,19 @@ namespace Desync.Enemies
 
             var visual = EnemyKit.Child("Crystal", go.transform, new Vector3(0f, 0.12f, 0f));
             var iceMat = EnemyKit.Mat("mat.ice", c.danger);
-            if (!EnemyKit.Model("model.ice", visual, 1.1f, iceMat, true, out _))
+            if (tracker)
+            {
+                var b = new MeshBuilder();
+                uint s = 0x7AC4u;
+                b.Bipyramid(new Vector3(0f, 0.75f, 0f), Quaternion.identity, 4, 0.13f, 0.75f, 0.6f, Color.white, ref s, 0.15f);   // needle
+                for (int k = 0; k < 6; k++)
+                {
+                    var q = Quaternion.Euler(0f, 60f * k, 0f);
+                    b.Bipyramid(q * new Vector3(0f, 0.7f, 0.45f), q * Quaternion.Euler(90f, 0f, 0f), 3, 0.06f, 0.2f, 0.2f, Color.white, ref s, 0.3f);
+                }
+                EnemyKit.MeshObj("Shard", visual, b.ToMesh("TrackerCrystal"), iceMat);
+            }
+            else if (!EnemyKit.Model("model.ice", visual, 1.1f, iceMat, true, out _))
             {
                 var b = new MeshBuilder();
                 uint s = 0x1CEu + (uint)i * 7919u;
@@ -186,7 +252,7 @@ namespace Desync.Enemies
             trail.autodestruct = false;
             EnemyKit.NoShadows(trail);
 
-            var h = go.AddComponent<IceHunter>();
+            var h = go.AddComponent<T>();
             h.agent = agent;
             h.trail = trail;
             h.visual = visual;
@@ -278,6 +344,16 @@ namespace Desync.Enemies
             var z = root.AddComponent<GlitchZone>();
             z.radius = radius;
             z.countdownRing = ringT;
+            return root;
+        }
+
+        /// Generated-room glitch zone (spec: force-flip after 1.0 s inside, 0.5 s screen-tear telegraph).
+        public static GameObject GlitchZone(Transform parent, Vector3 pos, float radius, float delay = 1f, float telegraph = 0.5f)
+        {
+            var root = GlitchZone(parent, pos, radius);
+            var z = root.GetComponent<GlitchZone>();
+            z.delay = delay;
+            z.telegraph = telegraph;
             return root;
         }
 
@@ -380,6 +456,83 @@ namespace Desync.Enemies
             arch.shards = shards;
             arch.shardScale = ShardScale;
             return root;
+        }
+
+        /// AUDITOR boss (Act 1) at the arena centre (floor level; room space Auditor.ArenaCenter of Content/bosses/auditor.json):
+        /// the ceiling scanner ring with its 3 RENDER scanner heads, the P2 glitch zones (inactive) and the pillar ICE hunters
+        /// (two, plus one for ICE SWARM). Terminals, uplink (exit portal), spawn and geometry come from the arena's RoomSpec.
+        /// Offsets follow the parent's yaw.
+        public static GameObject Auditor(Transform parent, Vector3 center)
+        {
+            var root = EnemyKit.Root("Auditor", parent, center, parent ? parent.eulerAngles.y : 0f);
+            EnsureTraceSystem(root.transform);
+            var ring = EnemyKit.Child("Ring", root.transform, Vector3.up * Boss.RingHeight);
+            var world = EnemyKit.World;
+            var b = new MeshBuilder();
+            for (int i = 0; i < 24; i++)
+            {
+                var q = Quaternion.Euler(0f, 15f * i, 0f);
+                b.Box(q * new Vector3(0f, 0f, Boss.RingRadius), new Vector3(0.62f, 0.16f, 0.2f), q, i % 2 == 0 ? EnemyKit.Navy : Magenta);
+            }
+            for (int i = 0; i < 3; i++)   // spokes to the hub
+            {
+                var q = Quaternion.Euler(0f, 120f * i + 60f, 0f);
+                b.Box(q * new Vector3(0f, 0.05f, Boss.RingRadius * 0.5f), new Vector3(0.1f, 0.08f, Boss.RingRadius), q, EnemyKit.Charcoal);
+            }
+            b.Prism(new Vector3(0f, 0.1f, 0f), 6, 0.35f, 0.3f, EnemyKit.Navy, Magenta);
+            EnemyKit.MeshObj("RingBody", ring, b.ToMesh("AuditorRing"), world);
+
+            var scanners = new VisionCone[3];
+            for (int i = 0; i < scanners.Length; i++)
+            {
+                var q = Quaternion.Euler(0f, 120f * i, 0f);
+                var head = EnemyKit.Child("Scanner" + i, ring, q * new Vector3(0f, -0.12f, Boss.RingRadius));
+                head.localRotation = q;
+                var hb = new MeshBuilder();
+                hb.Box(new Vector3(0f, -0.05f, 0.1f), new Vector3(0.3f, 0.26f, 0.4f), EnemyKit.Navy);
+                hb.Box(new Vector3(0f, -0.08f, 0.31f), new Vector3(0.16f, 0.16f, 0.04f), Magenta);
+                EnemyKit.MeshObj("Head", head, hb.ToMesh("AuditorHead"), world);
+                var eye = EnemyKit.Child("Eye", head, new Vector3(0f, -0.08f, 0.34f));
+                eye.localRotation = Quaternion.Euler(Boss.ScanPitch, 0f, 0f);
+                scanners[i] = AddCone(eye, Boss.ScanAngle, Boss.ScanRange, false, false);
+            }
+
+            var t = root.transform;
+            var zones = new GameObject[Boss.GlitchOffsets.Length];
+            for (int i = 0; i < zones.Length; i++)
+            {
+                Vector2 o = Boss.GlitchOffsets[i];
+                zones[i] = GlitchZone(t, t.TransformPoint(new Vector3(o.x, 0f, o.y)), Boss.GlitchRadius, 1f, 0.5f);
+                zones[i].SetActive(false);
+            }
+
+            var hunters = new PatrolHunter[3];
+            for (int i = 0; i < hunters.Length; i++)
+            {
+                var loop = Boss.Loops[i % Boss.Loops.Length];
+                var h = BuildHunter<PatrolHunter>(t, i, false);
+                h.patrol = new Vector3[loop.Length];
+                for (int k = 0; k < loop.Length; k++) h.patrol[k] = t.TransformPoint(new Vector3(loop[k].x, 0f, loop[k].y));
+                h.startIndex = i < Boss.Loops.Length ? 0 : loop.Length / 2;   // the ICE SWARM hunter starts opposite
+                hunters[i] = h;
+            }
+
+            var a = root.AddComponent<Boss>();
+            a.ring = ring;
+            a.scanners = scanners;
+            a.glitchZones = zones;
+            a.hunters = hunters;
+            return root;
+        }
+
+        /// GAZE run mutator: an Architect-style gaze (both layers) looking down-out from `at`, turning on `pivot` (RoomHazards).
+        internal static VisionCone Gaze(Transform parent, Vector3 at, float pitch, float angle, float range, out Transform pivot)
+        {
+            pivot = EnemyKit.Child("Gaze", parent, Vector3.zero);
+            pivot.position = at;
+            var tilt = EnemyKit.Child("Tilt", pivot, Vector3.zero);
+            tilt.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+            return AddCone(tilt, angle, range, false, true);
         }
 
         /// Wall billboard (HALCYON propaganda); in the finale it shows a board member's face. Faces +Z of yaw.
