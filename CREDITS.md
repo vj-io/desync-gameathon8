@@ -24,6 +24,7 @@ All CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). Modified: Poly
 | "Scifi Computer" (`ScifiComputer.obj`) | Quaternius | CC0 1.0 | https://poly.pizza/m/U0xmt6tUlL |
 | "Vent" (`Vent.obj`) | Quaternius | CC0 1.0 | https://poly.pizza/m/UDFcnJ0U73 |
 | "Robot Enemy Flying" (`RobotEnemyFlying.obj`) | Quaternius | CC0 1.0 | https://poly.pizza/m/lF3jeRJwiH |
+| "Man in Suit" (`Characters/GuardSuit.json`) | Quaternius | CC0 1.0 | https://poly.pizza/m/mQnGoME1ez |
 | "Spot Light" (`SpotLight.obj`) | iPoly3D | CC0 1.0 | https://poly.pizza/m/eaQqgLn0oJ |
 | "Crystal" (`Crystal.obj`) | iPoly3D | CC0 1.0 | https://poly.pizza/m/WzWPKHFMkL |
 | "Man" (`ManHead.obj`, head only) | Polygonal Mind | CC0 1.0 | https://poly.pizza/m/3w4Bgw7Phn |

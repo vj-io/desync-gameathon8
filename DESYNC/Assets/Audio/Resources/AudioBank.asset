@@ -16,6 +16,17 @@ MonoBehaviour:
   musicSource: {fileID: 8300000, guid: 61b7da767e1814cddb21cb0aef60d9cd, type: 3}
   musicRenderLp: {fileID: 8300000, guid: bbde598c572ae4c91806d1a832b14f30, type: 3}
   musicSourceLp: {fileID: 8300000, guid: ebe59ed8767db42149539d0691f90af9, type: 3}
+  musicRenderA2: {fileID: 8300000, guid: fab9059aa042144ec9f013a8f4c49761, type: 3}
+  musicSourceA2: {fileID: 8300000, guid: 907b706c688c14493b59d4e5317b8572, type: 3}
+  musicRenderLpA2: {fileID: 8300000, guid: aa5a0a590b0cb48e8bf4c7de7c1924ba, type: 3}
+  musicSourceLpA2: {fileID: 8300000, guid: 3953a12b6426145ec9086e4c61e6b52e, type: 3}
+  musicRenderA3: {fileID: 8300000, guid: 03ac70cd982744f0b96ee5e252026169, type: 3}
+  musicSourceA3: {fileID: 8300000, guid: 8e44ea51c46fd4c3ab5b776b20f39e9e, type: 3}
+  musicRenderLpA3: {fileID: 8300000, guid: b70b2e461d61e4506bfc02c04d7192ac, type: 3}
+  musicSourceLpA3: {fileID: 8300000, guid: b336143514bc44d799f38c40d46f5e7d, type: 3}
+  musicTension: {fileID: 8300000, guid: ad415d514c36f42b9996b0e236b5b24c, type: 3}
+  musicTraceA: {fileID: 8300000, guid: 969b48a1ad7bf42bc8d6ed093bff263c, type: 3}
+  musicTraceB: {fileID: 8300000, guid: d370f00c9722f41179aec2814a32e0ca, type: 3}
   flipSource: {fileID: 8300000, guid: 4166e8ecab22c41a6813399447e95aad, type: 3}
   flipRender: {fileID: 8300000, guid: 29a65b407455c4f93a4fca71e0d42e91, type: 3}
   flipReject: {fileID: 8300000, guid: 6ee3f182442384780a77594391a7b56d, type: 3}
@@ -41,6 +52,29 @@ MonoBehaviour:
   glitchBeep: {fileID: 8300000, guid: 8ee2fb2d67bad443088dc834fbb0322a, type: 3}
   uiClick: {fileID: 8300000, guid: ad5b884a32eba48fa9ec749604272ec3, type: 3}
   uiPop: {fileID: 8300000, guid: 05299b7ccaa9b440da7bf3334c1e7f01, type: 3}
+  scorePop: {fileID: 8300000, guid: 5f83406317a80448ba5909a5a0d0a056, type: 3}
+  redlineWhoosh: {fileID: 8300000, guid: 6a2903f0f9560405abb408cf5165cb77, type: 3}
+  grazeWhoosh: {fileID: 8300000, guid: f48da5043a8f74297bcc89e0a272f024, type: 3}
+  mapOpen: {fileID: 8300000, guid: 1417948a8ca1c43cd97ceee4c0491e52, type: 3}
+  mapChoose: {fileID: 8300000, guid: 3df592e4e6b9047e8bb9ec62c8f96fc3, type: 3}
+  decryptTick: {fileID: 8300000, guid: e225c208787004e33b22e2b43abf22ec, type: 3}
+  draftPick: {fileID: 8300000, guid: c56467ee301fa4feb9f3c9f4dcee5ab6, type: 3}
+  marketBuy: {fileID: 8300000, guid: 29a180d23a5e542b4a84d915cbcdd9d9, type: 3}
+  cooldown: {fileID: 8300000, guid: d92fd9459b5f7461f9840d7aee57defe, type: 3}
+  trackerSting: {fileID: 8300000, guid: c0d55c65e3df540c294e811df53e6f90, type: 3}
+  auditorP2: {fileID: 8300000, guid: 0741e35446428417c87695679d41cd0b, type: 3}
+  auditorP3: {fileID: 8300000, guid: 0eb89e54a48d642a39fb729bf8037482, type: 3}
+  uplinkTick: {fileID: 8300000, guid: 962bde392adee480e8dc67030af11967, type: 3}
+  lanternHum: {fileID: 8300000, guid: 52d7c4e00461747edae5dac4514290fc, type: 3}
+  sentinelCharge: {fileID: 8300000, guid: 3ee662000adee4b0ca59bd55edacb988, type: 3}
+  sentinelPulse: {fileID: 8300000, guid: d0ca82f330b4a40e68e28413cdea4ed8, type: 3}
+  splitterSplit: {fileID: 8300000, guid: cfa0d5cf71e394c5d8ab5228aa96eb93, type: 3}
+  daemonCross: {fileID: 8300000, guid: f23df16b5a6f44a05b128af917771dfa, type: 3}
+  watcherBeam: {fileID: 8300000, guid: 363dbe6ca20e2402bbc5b9771e71dd5b, type: 3}
+  alertSuspicious: {fileID: 8300000, guid: 984efbac026534179baa99117b2ddaf7, type: 3}
+  alertHunting: {fileID: 8300000, guid: 02a1c55b1ee1e48fab217d7648dae490, type: 3}
+  alertReturn: {fileID: 8300000, guid: 6f7fa7f6f4365449a9f0920787d4c9e9, type: 3}
+  wallSwap: {fileID: 8300000, guid: 88eed5446850b4c5d9f4ccebc08fb7c5, type: 3}
   footstepRender:
   - {fileID: 8300000, guid: d0311450279864108a2038b79d8c47f7, type: 3}
   - {fileID: 8300000, guid: ba6f03479ccd24c868435a8e8d183a8c, type: 3}

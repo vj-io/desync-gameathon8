@@ -7,26 +7,38 @@ using UnityEngine.UI;
 namespace Desync.UI
 {
     /// Title scene overlay + attract mode (orbiting camera, backdrop flips RENDER/SOURCE every ~3 s) + mode menu:
-    /// CAMPAIGN BREACH / QUICK BREACH / CLASSIC (6 ROOMS) / DAILY (greyed, soon). Mouse (hover + click), arrows / WASD /
-    /// pad d-pad to move, SPACE / Enter / pad A / Start or a click on the backdrop to start the highlighted mode.
+    /// CAMPAIGN BREACH / QUICK BREACH / CLASSIC (6 ROOMS) / DAILY (greyed, soon) / DEEP LAYER (locked until the first ARCHITECT kill; opens
+    /// the Deep Layer select) / STORY (replays the story cinematic). Mouse (hover + click), arrows / WASD / pad d-pad to move, SPACE / Enter / pad A / Start or a click on the
+    /// backdrop to start the highlighted mode.
     public sealed class TitleScreen : UIPanel
     {
         GlitchLabel _logo;
         TMP_Text _tag, _intro, _meta, _sensVal, _caption, _goals;
         Slider _sens;
         UIButton[] _items; int _sel;
-        static readonly RunMode[] Modes = { RunMode.Campaign, RunMode.Quick, RunMode.Classic, RunMode.Daily };
-        static readonly string[] Labels = { "CAMPAIGN BREACH", "QUICK BREACH", "CLASSIC (6 ROOMS)", "DAILY · SOON" };
+        static readonly RunMode[] Modes = { RunMode.Campaign, RunMode.Quick, RunMode.Classic, RunMode.Daily, RunMode.Campaign, RunMode.Classic };   // [4] opens the Deep Layer select, [5] plays the STORY
+        static readonly string[] Labels = { "CAMPAIGN BREACH", "QUICK BREACH", "CLASSIC (6 ROOMS)", "DAILY · SOON", "DEEP LAYER", "STORY" };
         static readonly string[] Blurbs =
         {
             "BRANCHING MAP · EXPLOITS · BOSSES",
             "ACT 1 + THE AUDITOR · ~6 MIN",
             "THE ORIGINAL SIX ROOMS · ~8 MIN",
             "ONE SHARED SEED A DAY · SOON",
+            "",   // Deep Layer: DeepBlurb
+            "WHO IS ECHO? · THE STORY IN 80 S",
         };
         /// Highlighted on every Show. CLASSIC keeps "click / SPACE / pad = jack in to Room 01" as the one-press path.
-        internal const int DefaultItem = 2, DailyItem = 3;
+        internal const int DefaultItem = 2, DailyItem = 3, DeepItem = 4, StoryItem = 5;
+        /// Reading order (two per row) = arrow order: STORY sits beside CAMPAIGN, so CLASSIC still wraps to CAMPAIGN.
+        static readonly int[] Order = { 0, StoryItem, 1, 2, 3, 4 };
         internal int Selected => _sel;
+        /// UIManager: opens the Deep Layer select; Blocked = that screen is up, so the menu ignores the keys it handles.
+        public System.Action OnDeep;
+        /// UIManager: plays the STORY cinematic.
+        public System.Action OnStory;
+        public bool Blocked;
+        bool _deepOpen;
+        internal bool DeepOpen => _deepOpen;
         Tween _pulse, _clickTw;
         Camera _cam; float _radius, _height, _angle;
         float _flipT, _introT, _introChars, _introDelay;
@@ -44,45 +56,47 @@ namespace Desync.UI
             var shade = UIKit.Img(Root, "Shade", new Color(0f, 0f, 0.02f, 0.9f), UIKit.Vignette);
             UIKit.Stretch(shade.rectTransform);
             var card = UIKit.Img(Root, "Card", new Color(UIKit.Ink.r, UIKit.Ink.g, UIKit.Ink.b, 0.72f));
-            UIKit.Place(card.rectTransform, Anc.C, new Vector2(0, -10), new Vector2(1520, 780));
+            UIKit.Place(card.rectTransform, Anc.C, new Vector2(0, -10), new Vector2(1520, 860));
             var fr = UIKit.Img(card.transform, "Frame", new Color(UIKit.Cyan.r, UIKit.Cyan.g, UIKit.Cyan.b, 0.55f), UIKit.Frame, Image.Type.Sliced);
             UIKit.Stretch(fr.rectTransform);
 
             _caption = UIKit.Text(card.transform, "Caption", UIKit.Hud, 22, UIKit.Dim, TextAlignmentOptions.Center, "HALCYON CORP // TERMINAL 0x01 // GAMEATHON 8.0 // BREAK THE SIMULATION");
             _caption.characterSpacing = 6f; UIKit.Place(_caption.rectTransform, Anc.T, new Vector2(0, -22), new Vector2(1400, 30));
 
-            _logo = GlitchLabel.Create(card.transform, "Logo", Anc.C, new Vector2(0, 225), new Vector2(1400, 260), UIKit.Title, 210, UIKit.Paper, TextAlignmentOptions.Center, 5f, true, 18f);
+            _logo = GlitchLabel.Create(card.transform, "Logo", Anc.C, new Vector2(0, 265), new Vector2(1400, 260), UIKit.Title, 210, UIKit.Paper, TextAlignmentOptions.Center, 5f, true, 18f);
             _logo.IdleEvery = 2.8f;
             _goals = UIKit.Text(card.transform, "Goals", UIKit.Hud, 30, UIKit.Dim, TextAlignmentOptions.Center); _goals.characterSpacing = 8f;
-            UIKit.Place(_goals.rectTransform, Anc.C, new Vector2(0, 116), new Vector2(1400, 38));
+            UIKit.Place(_goals.rectTransform, Anc.C, new Vector2(0, 156), new Vector2(1400, 38));
 
             _tag = UIKit.Text(card.transform, "Tagline", UIKit.Hud, 46, UIKit.Cyan, TextAlignmentOptions.Center, "SPACE = SEE THE CODE");
-            _tag.characterSpacing = 8f; UIKit.Place(_tag.rectTransform, Anc.C, new Vector2(0, 62), new Vector2(1400, 60));
+            _tag.characterSpacing = 8f; UIKit.Place(_tag.rectTransform, Anc.C, new Vector2(0, 102), new Vector2(1400, 60));
 
             _intro = UIKit.Text(card.transform, "Intro", UIKit.Term, 42, UIKit.Paper, TextAlignmentOptions.Top);
             _intro.textWrappingMode = TextWrappingModes.Normal;
-            UIKit.Place(_intro.rectTransform, Anc.C, new Vector2(0, -30), new Vector2(1240, 130));
+            UIKit.Place(_intro.rectTransform, Anc.C, new Vector2(0, 10), new Vector2(1240, 130));
 
             _items = new UIButton[Modes.Length];
             for (int i = 0; i < Modes.Length; i++)
             {
                 int k = i;
-                var col = i == DailyItem ? new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f) : i == 0 ? UIKit.Magenta : UIKit.Cyan;
-                var b = UIButton.Create(card.transform, "Mode" + i, Labels[i], Anc.C, new Vector2(i % 2 == 0 ? -250 : 250, i < 2 ? -132 : -224), new Vector2(470, 80), 30, col, () => Pick(k));
+                var col = i == DailyItem || i == DeepItem ? new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f) : i == 0 ? UIKit.Magenta : i == StoryItem ? UIKit.Green : UIKit.Cyan;   // Deep: Show() colours it by unlock
+                int slot = System.Array.IndexOf(Order, i);
+                var pos = new Vector2(slot % 2 == 0 ? -250 : 250, -100 - 92 * (slot / 2));
+                var b = UIButton.Create(card.transform, "Mode" + i, Labels[i], Anc.C, pos, new Vector2(470, 80), 30, col, () => Pick(k));
                 b.Label.characterSpacing = 3f;
                 if (i == DailyItem) b.Hot = col;   // greyed: no hover highlight
-                else b.Hovered = () => Select(k);
+                else b.Hovered = () => Select(k);   // Deep locked: Select ignores it
                 _items[i] = b;
             }
 
             _meta = UIKit.Text(card.transform, "Meta", UIKit.Hud, 26, UIKit.Dim, TextAlignmentOptions.Center);
-            _meta.characterSpacing = 4f; UIKit.Place(_meta.rectTransform, Anc.C, new Vector2(0, -292), new Vector2(1400, 36));
+            _meta.characterSpacing = 4f; UIKit.Place(_meta.rectTransform, Anc.C, new Vector2(0, -352), new Vector2(1400, 36));
 
             var sl = UIKit.Text(card.transform, "SensLabel", UIKit.Hud, 26, UIKit.Dim, TextAlignmentOptions.Right, "SENSITIVITY");
-            UIKit.Place(sl.rectTransform, Anc.C, new Vector2(-390, -342), new Vector2(260, 36));
-            _sens = UIControls.NewSlider(card.transform, "SensSlider", Anc.C, new Vector2(0, -342), 420, 0.1f, 3f, Settings.Sensitivity, OnSens);
+            UIKit.Place(sl.rectTransform, Anc.C, new Vector2(-390, -398), new Vector2(260, 36));
+            _sens = UIControls.NewSlider(card.transform, "SensSlider", Anc.C, new Vector2(0, -398), 420, 0.1f, 3f, Settings.Sensitivity, OnSens);
             _sensVal = UIKit.Text(card.transform, "SensValue", UIKit.Hud, 26, UIKit.Cyan, TextAlignmentOptions.Left);
-            UIKit.Place(_sensVal.rectTransform, Anc.C, new Vector2(300, -342), new Vector2(140, 36));
+            UIKit.Place(_sensVal.rectTransform, Anc.C, new Vector2(300, -398), new Vector2(140, 36));
             _sensVal.SetText("{0:0.00}", Settings.Sensitivity);
         }
 
@@ -104,18 +118,23 @@ namespace Desync.UI
 
         void Select(int i)
         {
-            if (i == DailyItem || i < 0 || i >= _items.Length) return;
+            if (i == DailyItem || i < 0 || i >= _items.Length || (i == DeepItem && !_deepOpen)) return;
             if (_items[_sel] && _sel != i) _items[_sel].transform.localScale = Vector3.one;
             _sel = i;
             for (int k = 0; k < _items.Length; k++) _items[k].SetSelected(k == i);
-            _meta.SetText(Blurbs[i] + "  ·  ↑↓←→ CHOOSE  ·  CLICK, SPACE OR PAD A TO JACK IN");
+            _meta.SetText((i == DeepItem ? DeepBlurb() : Blurbs[i]) + "  ·  ↑↓←→ CHOOSE  ·  CLICK, SPACE OR PAD A TO " + (i == DeepItem ? "OPEN" : i == StoryItem ? "WATCH" : "JACK IN"));
             UIKit.Kill(ref _pulse);
             _pulse = Tween.Scale(_items[i].transform, 1f, 1.04f, 0.55f, Ease.InOutSine, cycles: -1, cycleMode: CycleMode.Yoyo, useUnscaledTime: true);
         }
 
         void Pick(int i)
         {
-            if (i == DailyItem) { _logo.Glitch(1.4f, 0.3f); UIKit.Pop(ref _clickTw, _items[i].transform, 0.9f, 0.2f); return; }   // not yet
+            if (i == DailyItem || (i == DeepItem && !_deepOpen))   // not yet / locked
+            {
+                _logo.Glitch(1.4f, 0.3f); UIKit.Pop(ref _clickTw, _items[i].transform, 0.9f, 0.2f);
+                if (i == DeepItem) _meta.SetText("THE DEEP LAYER OPENS AFTER YOUR FIRST ARCHITECT KILL");
+                return;
+            }
             Select(i);
             Start0();
         }
@@ -124,6 +143,8 @@ namespace Desync.UI
         void Start0()
         {
             if (_started) return;
+            if (_sel == DeepItem) { OnDeep?.Invoke(); return; }   // the select screen starts the run
+            if (_sel == StoryItem) { OnStory?.Invoke(); return; }   // the story ends in Room 1
             _started = true;
             UIKit.Kill(ref _pulse);
             _items[_sel].Label.SetText("JACKING IN...");
@@ -137,6 +158,11 @@ namespace Desync.UI
             base.Show();
             _started = false; _cam = null;
             for (int i = 0; i < _items.Length; i++) { _items[i].Label.SetText(Labels[i]); _items[i].transform.localScale = Vector3.one; }
+            try { _deepOpen = RunUnlocks.MaxDeepLayer(Desync.Net.SaveService.Data) > 0; }
+            catch (System.Exception e) { _deepOpen = false; Debug.LogWarning("[DESYNC] title deep layer: save unavailable (" + e.GetType().Name + ")"); }
+            var deep = _items[DeepItem];
+            deep.Base = _deepOpen ? UIKit.Cyan : new Color(UIKit.Dim.r, UIKit.Dim.g, UIKit.Dim.b, 0.5f); deep.Hot = _deepOpen ? UIKit.Magenta : deep.Base;
+            deep.Label.SetText(_deepOpen ? "DEEP LAYER" : "DEEP LAYER · LOCKED"); deep.SetSelected(false);
             var cfg = GameConfig.I;
             _intro.SetText(cfg.introLines != null && cfg.introLines.Length > 0 ? cfg.introLines[0] : "");
             _intro.maxVisibleCharacters = 0; _introChars = 0; _introShown = 0; _introDelay = 0.9f;
@@ -180,9 +206,12 @@ namespace Desync.UI
         {
             if (_started) return;
             UIKit.FreeCursor();
-            if (UIKit.Confirm.WasPressedThisFrame()) { Start0(); return; }   // Space / Enter / pad South / pad Start (click path stays)
-            int step = UIKit.NavStep;
-            if (step != 0) Select(((_sel + step) % DailyItem + DailyItem) % DailyItem);   // DAILY is not selectable yet
+            if (!Blocked)
+            {
+                if (UIKit.Confirm.WasPressedThisFrame()) { Start0(); return; }   // Space / Enter / pad South / pad Start (click path stays)
+                int step = UIKit.NavStep;
+                if (step != 0) Select(NextSel(step));
+            }
             Orbit(dt);
             _flipT -= dt;
             if (_flipT <= 0f)
@@ -197,6 +226,25 @@ namespace Desync.UI
             _introChars += dt * IntroCps;
             int want = (int)_introChars;
             if (want != _introShown) { _introShown = want; _intro.maxVisibleCharacters = want; }
+        }
+
+        /// The next selectable item in `step` direction (Order), wrapping: DAILY never, DEEP LAYER only once it is open.
+        int NextSel(int step)
+        {
+            int n = Order.Length, at = System.Array.IndexOf(Order, _sel);
+            for (int k = 1; k <= n; k++)
+            {
+                int c = Order[((at + step * k) % n + n) % n];
+                if (c != DailyItem && (c != DeepItem || _deepOpen)) return c;
+            }
+            return _sel;
+        }
+
+        string DeepBlurb()
+        {
+            int best = 0;
+            try { best = Desync.Net.SaveService.Data.deepLayerMax; } catch (System.Exception) { }
+            return "HEAT MUTATORS · DL 1-" + DeepRules.MaxLevel + (best > 0 ? " · BEST DL " + best : "");
         }
 
         void Orbit(float dt)

@@ -24,13 +24,12 @@ namespace Desync.UI
         readonly char[] _buf = new char[256];
         int _count, _focus, _shownFrame = -1, _ticks, _rerolls = -1;
         float _t; bool _acted, _decrypting;
-        AudioSource _sfx; AudioClip _tick;
 
         internal bool Decrypting => _decrypting;
         internal string NameText(int i) => _cards[i].Name.text;
         internal string TargetName(int i) => _name[i];
 
-        public void Init(AudioSource sfx) { _sfx = sfx; }
+        public void Init(AudioSource sfx) { }   // draft sounds are played by AudioManager (RunEvents)
 
         protected override void Create()
         {
@@ -61,7 +60,6 @@ namespace Desync.UI
         {
             base.Show();
             _acted = false; _shownFrame = Time.frameCount;
-            if (!_tick) _tick = AssetLib.Get<AudioClip>("sfx.ui.click");
             Load();
             UIKit.Pop(ref _pop, _panel, 0.94f, 0.2f);
         }
@@ -132,7 +130,6 @@ namespace Desync.UI
         {
             if (_acted || i >= _count) return;
             _acted = true;
-            Play(1.5f);
             if (i >= 0) UIKit.Pop(ref _pop, _cards[i].Rt, 1.15f, 0.2f);
             RunEvents.PickExploit?.Invoke(i);
         }
@@ -143,12 +140,6 @@ namespace Desync.UI
             RunEvents.RerollOffer?.Invoke();
         }
 
-        void Play(float pitch)
-        {
-            if (!_sfx || !_tick) return;
-            _sfx.pitch = pitch;
-            _sfx.PlayOneShot(_tick, 0.6f);
-        }
 
         public override void Tick(float dt)
         {
@@ -170,7 +161,7 @@ namespace Desync.UI
                 _t = Mathf.Min(Decrypt, _t + dt);
                 Scramble(_t);
                 int ticks = (int)(_t / TickEvery);
-                if (ticks > _ticks) { _ticks = ticks; Play(1f + _t / Decrypt); }   // rising pitch: one octave over the decrypt
+                if (ticks > _ticks) _ticks = ticks;   // the decrypt ticks themselves are played by AudioManager (one voice budget)
                 if (_t >= Decrypt) _decrypting = false;
             }
 

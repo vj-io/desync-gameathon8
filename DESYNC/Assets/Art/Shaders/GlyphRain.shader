@@ -80,7 +80,7 @@ Shader "Desync/GlyphRain"
                 float head = 1.0 - step(0.5, row);
                 float bright = pow(1.0 - k, 1.6) * 0.9 + head * 0.6;
                 float near = saturate((distance(i.positionWS, _WorldSpaceCameraPos) - _NearFade.x) / max(_NearFade.y, 1e-3));
-                float3 col = lerp(_Color.rgb, _HeadColor.rgb, head) * glyph * bright * i.color.a * near * _Intensity;
+                float3 col = lerp(lerp(_Color.rgb, _CbSource.rgb, _Colorblind), lerp(_HeadColor.rgb, _CbSource.rgb * 1.6, _Colorblind), head) * glyph * bright * i.color.a * near * _Intensity;
                 col *= FogVisibility(i.seedFog.y);
                 return half4(col, 1.0);
             }

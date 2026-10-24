@@ -11,7 +11,7 @@ namespace Desync.Flow
     /// mutators by node type, forced mirror, dead-zone strips. RunManager applies them; tests call them directly.
     public static class RunRules
     {
-        public const int CampaignActs = 2;                     // M2: acts 1-2 (act 3 arrives with M3)
+        public const int CampaignActs = 3;                     // AUDITOR, COMPILER, ARCHITECT
         public const int MaxBackups = 2, StartBackups = 0;
         public const float MeltCarryShare = 0.5f;              // melt carried from a room's exit into the next room
         public const int FragClear = 10, FragGoldPlus = 10, FragS = 15, FragDeath = 3;
@@ -38,6 +38,9 @@ namespace Desync.Flow
             CyclesClear + Math.Max(0, "CBAS".IndexOf(grade)) * CyclesPerGrade + (elite ? CyclesElite : 0);
 
         public static int Price(Rarity r) => r == Rarity.C ? PriceCommon : r == Rarity.R ? PriceRare : PriceEpic;
+
+        /// Ghost Cache: the `nth` qualifying exit of the run (from 1) pays a reroll token; under Fewer Choices only every second one.
+        public static bool GhostCacheReroll(int nth, bool fewerChoices) => !fewerChoices || nth % 2 == 0;
 
         /// The full catalog restricted to the M2 exploits (mutators kept).
         public static Catalog DraftPool(Catalog full)
@@ -79,12 +82,22 @@ namespace Desync.Flow
             return true;
         }
 
+        public const string AuditorDronesFlag = "flag:auditor_drones";
+
+        /// Auditor Drones (dispatched at TRACE 2) in generated rooms from act 2's third room on (enemy intro: A2 r3) and in all
+        /// of act 3; not in boss arenas or an original room a failed generation fell back to.
+        public static bool AuditorDrones(RunNode node, RoomSpec spec) =>
+            node.type != NodeType.Boss && spec != null && spec.fallbackRoom == null && (node.act == 2 ? node.index >= 2 : node.act >= 3);
+
         /// The node's room; with MIRROR the first mirrored room among reseeds of the node seed (the generator mirrors p 0.5).
-        public static RoomSpec Room(RunNode node, bool mirror, ChunkLibrary lib)
+        public static RoomSpec Room(RunNode node, bool mirror, ChunkLibrary lib) => Room(node, mirror, lib, 0, default);
+
+        /// The same under Deep Layer heat: `heat` raises the threat budget (generator), `placement` adds the heat threats.
+        public static RoomSpec Room(RunNode node, bool mirror, ChunkLibrary lib, int heat, HeatPlacement placement)
         {
-            var spec = Generator.GenerateRoom(node.roomSeed, node.act, node.index, 0, lib);
+            var spec = Generator.GenerateRoom(node.roomSeed, node.act, node.index, heat, lib, placement);
             for (int k = 1; mirror && !spec.mirror && spec.fallbackRoom == null && k <= 8; k++)
-                spec = Generator.GenerateRoom(Rng.Substream(node.roomSeed, "mirror" + k).NextUInt(), node.act, node.index, 0, lib);
+                spec = Generator.GenerateRoom(Rng.Substream(node.roomSeed, "mirror" + k).NextUInt(), node.act, node.index, heat, lib, placement);
             return spec;
         }
 

@@ -3,6 +3,7 @@
   "rootNamespace": "Desync.UI.Tests",
   "references": [
     "Desync.Core",
+    "Desync.Art",
     "Desync.Rules",
     "Desync.Net",
     "Desync.UI",

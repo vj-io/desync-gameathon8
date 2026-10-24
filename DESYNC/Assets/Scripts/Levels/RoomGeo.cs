@@ -471,6 +471,19 @@ namespace Desync.Levels
             return root;
         }
 
+        /// The session's first TextMeshPro costs 30-60 ms (TMP settings, font tables, mesh buffers); the builder logs showed it
+        /// as the first room's poster-stage hitch. Paid once here at boot instead: one hidden poster with every slogan.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void WarmPosterText()
+        {
+            var font = AssetLib.Get<TMP_FontAsset>("font.title");
+            if (!font) return;
+            var go = new GameObject("PosterTextWarmup");
+            Poster(new MeshKit(), go.transform, Vector3.down * 100f, Vector3.forward, font, Color.clear, string.Join("\n", Posters.Default));
+            foreach (var r in go.GetComponentsInChildren<Renderer>()) r.enabled = false;
+            UnityEngine.Object.Destroy(go);
+        }
+
         /// One HALCYON poster panel (mat.poster quad into `k`) centred on `ctr` on a wall face looking along `away`,
         /// with its slogan as TMP text under `root` (skipped without a font).
         internal static void Poster(MeshKit k, Transform root, Vector3 ctr, Vector3 away, TMP_FontAsset font, Color color, string slogan)

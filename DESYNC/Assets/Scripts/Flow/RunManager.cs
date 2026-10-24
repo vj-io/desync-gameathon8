@@ -9,16 +9,17 @@ using Desync.Levels;
 using Desync.Net;
 using Desync.Player;
 using Desync.Rules;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace Desync.Flow
 {
-    /// The BREACH run: CAMPAIGN (acts 1-2), QUICK (act 1), DAILY (campaign on the UTC-day seed), CLASSIC (the six original
-    /// rooms, unchanged flow). Run graph -> map choice -> node: room (built into the Breach scene) -> results -> exploit
-    /// draft -> map; Black Market, Cooldown. Deaths spend a Backup or end the run; a boss offers cash-out or the next act.
-    /// Writes RunState and raises RunEvents (RunContracts.cs); the UI reads and requests. Self-bootstraps.
+    /// The BREACH run: CAMPAIGN (acts 1-3: AUDITOR, COMPILER, ARCHITECT), QUICK (act 1), DAILY (campaign on the UTC-day
+    /// seed), CLASSIC (the six original rooms, unchanged flow), and Deep Layer: a CAMPAIGN under heat mutators (DeepLayer.cs,
+    /// BeginDeep / DeepRun.StartRequested). Run graph -> map choice -> node: room (built into the Breach scene) -> results ->
+    /// exploit draft -> map; Black Market, Cooldown. Deaths spend a Backup or end the run; a boss offers cash-out or the next
+    /// act, and its first kill is saved (RunUnlocks). Boss arenas: RunBosses. Writes RunState and raises RunEvents
+    /// (RunContracts.cs); the UI reads and requests. Self-bootstraps.
     ///
     /// Phases: Map (choose a node) -> Room (playing, recap) -> Results (room results; on a boss: CashOut / GoDeeper, and
     /// ContinueRequested = GoDeeper, or the run's end after the final act) -> Draft (pick/skip/reroll) -> Map. Market and
@@ -28,7 +29,6 @@ namespace Desync.Flow
     {
         public static RunManager I;
         public const string StageScene = RoomBuilder.BreachScene;
-        const int AuditorTerminals = 3;   // the arena's three terminals open the uplink (the exit)
 
         /// Builds a generated room under `parent` and calls `done(handle)` once it is playable; handle.Dispose() removes it.
         /// Default: Levels.RoomBuilder.BuildAsync. Tests swap in a stub.
@@ -47,8 +47,19 @@ namespace Desync.Flow
         AudioListener ears;   // and hears the music there
         readonly List<Mesh> zoneMeshes = new List<Mesh>();
         Mulberry32 draftRng;
-        bool lost, draftRarePlus, nextAct, backupSold, staging, arena;
+        bool lost, draftRarePlus, nextAct, backupSold, staging;
         int bestChain, token;
+        RunBosses.Arena bossArena;    // the boss node's arena (null elsewhere, or when the boss node fell back to a generated room)
+        Catalog runPool;              // this run's draft / market pool: draftPool minus what the Deep Layer picks exclude
+        HeatPlacement heatPlacement;  // Deep Layer threats the generator adds
+        float deadline = -1f;         // Tight Deadline: room time of its +1 TRACE (-1 = off)
+        bool deadlineDone;
+        int grazeSurge;               // Redline Surge: the last cleared room's REDLINE exits = +GRAZE cap per ICE in the next room
+        int ghostCacheHits;           // Ghost Cache exits this run (Fewer Choices pays every second one)
+
+        /// The boss spawned in the current room ("auditor", "compiler", "architect"), null elsewhere.
+        public string CurrentBoss { get; private set; }
+        bool NoBackups => DeepRules.Has(DeepRun.Picks, "no_backups");
 
         /// A run room is being built or played (RoomManager hands deaths, continue and targets to the run).
         public bool RoomLive { get; private set; }
@@ -90,6 +101,10 @@ namespace Desync.Flow
             GameEvents.QuitRequested += OnQuit;
             GameEvents.StartRequested += OnClassicStart;
             GameEvents.RoomStarted += OnRoomStarted;
+            GameEvents.RoomReset += OnRoomReset;
+            DeepRun.StartRequested += OnStartDeep;
+            BossEvents.MeltChanged += OnBossMelt;
+            BossEvents.Ending += OnEnding;
         }
 
         void OnDisable()
@@ -107,17 +122,22 @@ namespace Desync.Flow
             GameEvents.QuitRequested -= OnQuit;
             GameEvents.StartRequested -= OnClassicStart;
             GameEvents.RoomStarted -= OnRoomStarted;
+            GameEvents.RoomReset -= OnRoomReset;
+            DeepRun.StartRequested -= OnStartDeep;
+            BossEvents.MeltChanged -= OnBossMelt;
+            BossEvents.Ending -= OnEnding;
         }
 
         /// Conditional exploit effects (chain>=, melt>=, trace>=, layer=) re-folded whenever one of their inputs moved.
         void Update()
         {
             SyncBackdrop();
+            TickDeadline();
             if (!RoomLive || built == null || built.conditional.Count == 0) return;
             var c = Context();
             if (c.chain == ctx.chain && c.melt == ctx.melt && c.trace == ctx.trace && c.layer == ctx.layer) return;
             ctx = c;
-            GameState.Mods = Conditions.Apply(built.mods, built.conditional, c);
+            GameState.Mods = LiveMods(c);
         }
 
         /// The backdrop camera + listener are on during a run whenever no room camera is up (one listener at a time).
@@ -131,6 +151,34 @@ namespace Desync.Flow
 
         void OnRoomStarted(int room) => SyncBackdrop();
 
+        /// Tight Deadline: +1 TRACE once the room clock passes the tightened par, also while a TRACE runs (Sustain only
+        /// counts a new one, so the running one is closed first: count + 1, timer refilled, TraceStarted, Alarm on the 3rd).
+        void TickDeadline()
+        {
+            if (deadline < 0f || deadlineDone || !RoomLive || !GameState.Alive
+                || GameState.Phase != GameState.PhaseKind.Playing || RoomClock.Time < deadline) return;
+            deadlineDone = true;
+            GameState.TraceActive = false;
+            TraceSystem.Sustain();
+        }
+
+        /// Live Modifiers: the room's loadout + its conditional effects that hold now, + the boss phase's melt (BossEvents).
+        Modifiers LiveMods(in ConditionContext c)
+        {
+            var m = Conditions.Apply(built.mods, built.conditional, c);
+            return bossArena != null ? BossEvents.Fold(m).Clamped() : m;
+        }
+
+        void OnBossMelt()
+        {
+            if (RoomLive && built != null) GameState.Mods = LiveMods(ctx);
+        }
+
+        void OnRoomReset() => deadlineDone = false;   // every attempt gets its own deadline
+
+        /// ARCHITECT ending (Exposed / Merged) -> SaveV3.unlocks "ending_exposed" / "ending_merged" (story shards, true ending).
+        void OnEnding(string ending) { if (RunUnlocks.RecordEnding(SaveService.Data, ending)) SaveService.Save(); }
+
         ConditionContext Context() => new ConditionContext
         {
             chain = GameState.Chain, melt = GameState.Melt, trace = GameState.TraceCount, node = node.index + 1,
@@ -139,19 +187,52 @@ namespace Desync.Flow
 
         // ---------- start / end ----------
 
-        void OnStartRun(RunMode mode) =>
-            Begin(mode, mode == RunMode.Daily ? Rng.DailySeed(DateTime.UtcNow) : unchecked((uint)DateTime.UtcNow.Ticks ^ (uint)(DateTime.UtcNow.Ticks >> 32)));
+        void OnStartRun(RunMode mode) => Begin(mode, mode == RunMode.Daily ? Rng.DailySeed(DateTime.UtcNow) : NewSeed());
+
+        void OnStartDeep(int level, IReadOnlyList<MutatorPick> picks) => BeginDeep(level, picks, NewSeed());
+
+        static uint NewSeed() => unchecked((uint)DateTime.UtcNow.Ticks ^ (uint)(DateTime.UtcNow.Ticks >> 32));
 
         /// Starts a run on `seed` (a run in progress is abandoned first). CLASSIC hands over to the six-room flow.
-        public void Begin(RunMode mode, uint seed)
+        public void Begin(RunMode mode, uint seed) => Begin(mode, seed, 0, null);
+
+        /// Starts a Deep Layer CAMPAIGN at `level` under `picks` (null = DeepRules.Preset(level)). Refused (false, nothing
+        /// changes) when the level is not open to this profile or the picks do not add up to it legally (DeepRules.Check).
+        public bool BeginDeep(int level, IReadOnlyList<MutatorPick> picks, uint seed)
+        {
+            LoadContent();
+            var p = picks ?? DeepRules.Preset(level);
+            var errors = DeepRules.Check(level, p, catalog, RunUnlocks.MaxDeepLayer(SaveService.Data));
+            if (errors.Count > 0)
+            {
+                Debug.LogWarning("[DESYNC] Deep Layer " + level + " refused: " + string.Join(", ", errors));
+                return false;
+            }
+            Begin(RunMode.Campaign, seed, level, p);
+            return true;
+        }
+
+        void Begin(RunMode mode, uint seed, int level, IReadOnlyList<MutatorPick> picks)
         {
             Abandon();
             ResetRun();
             RunState.Mode = mode;
             if (mode == RunMode.Classic) { GameEvents.StartRequested?.Invoke(0); return; }
             LoadContent();
+            if (level > 0)
+            {
+                DeepRun.Level = level;
+                DeepRun.Picks.AddRange(DeepRules.Canonical(picks));
+            }
+            runPool = draftPool;
+            if (DeepRun.Level > 0)
+            {
+                runPool = new Catalog { mutators = draftPool.mutators };
+                foreach (var e in draftPool.exploits) if (!DeepRules.Excludes(DeepRun.Picks, catalog, e.id)) runPool.exploits.Add(e);
+            }
+            heatPlacement = DeepRules.Placement(DeepRun.Picks, catalog);
             RunState.Seed = seed;
-            RunState.Graph = Generator.GenerateRun(seed, 0);
+            RunState.Graph = Generator.GenerateRun(seed, DeepRun.Level);
             RunState.Act = 1;
             RunState.Backups = RunRules.StartBackups;
             SaveService.Data.stats.runs++;
@@ -177,12 +258,13 @@ namespace Desync.Flow
         {
             ClearRoomState();   // first: the room is detached with no run modifiers and no carried melt
             TearDownRoom();
-            int bank = RunRules.Bank(RunState.Fragments, died);
+            int bank = RunRules.Bank(RunState.Fragments + DeepRules.Bonus(RunState.Fragments, DeepRun.Level), died);
             RunState.Fragments = bank;
             RunState.Won = won;
             var save = SaveService.Data;
             save.fragments += bank;
             if (won) save.stats.wins++;
+            if (won && DeepRun.Level > 0) RunUnlocks.RecordDeepWin(save, DeepRun.Level);
             SaveService.Save();
             Cursor.lockState = CursorLockMode.None;
             SetPhase(announce ? RunPhase.Over : RunPhase.None);
@@ -210,9 +292,17 @@ namespace Desync.Flow
             RunState.Grades.Clear();
             RunState.Won = false;
             lost = draftRarePlus = nextAct = backupSold = false;
+            PerkBinder.DeadManUsed = false;   // Dead Man's Switch re-arms for a fresh run
             bestChain = 0;
             node = null;
             spec = null;
+            bossArena = null;
+            CurrentBoss = null;
+            DeepRun.Level = 0;
+            DeepRun.Picks.Clear();
+            heatPlacement = default;
+            deadline = -1f;
+            grazeSurge = ghostCacheHits = 0;
             ClearRoomState();
         }
 
@@ -230,7 +320,7 @@ namespace Desync.Flow
         {
             if (catalog != null) return;
             catalog = Catalog.FromJson(Resources.Load<TextAsset>("Content/exploits").text, Resources.Load<TextAsset>("Content/mutators").text);
-            draftPool = RunRules.DraftPool(catalog);
+            draftPool = catalog;   // M3: draft and market draw from all 48 exploits (+ duos via Loadout rules), not just the M2 pool
             var docs = Resources.LoadAll<TextAsset>("Content/chunks");
             Array.Sort(docs, (a, b) => string.CompareOrdinal(a.name, b.name));   // the same order as ChunkLibrary.FromFolder
             chunks = new ChunkLibrary();
@@ -316,33 +406,21 @@ namespace Desync.Flow
         void PrepareRoom()
         {
             RunState.RoomMutators.AddRange(RunRules.RoomMutators(Rng.Substream(node.roomSeed, "mutators"), catalog, node));
-            bool mirror = false;
-            var picks = new List<MutatorPick>(RunState.RoomMutators.Count);
-            foreach (var m in RunState.RoomMutators)
-            {
-                mirror |= m.id == "mirror";
-                picks.Add(new MutatorPick(m.id, 1));
-            }
-            arena = false;
-            spec = node.type == NodeType.Boss ? BossArena() : RunRules.Room(node, mirror, chunks);
-            built = Loadout.Build(RunState.Held, picks, catalog, RunState.Mode == RunMode.Daily ? "daily" : null);
+            bool mirror = RunState.RoomMutators.Exists(m => m.id == "mirror");
+            bossArena = node.type == NodeType.Boss ? RunBosses.For(node) : null;
+            spec = bossArena != null ? bossArena.spec : RunRules.Room(node, mirror, chunks, DeepRun.Level, heatPlacement);
+            // held exploits + room mutators + Deep Layer picks; flags gain "mut:<id>" and the DL >= 6 boss heat flag
+            built = DeepRules.Build(RunState.Held, RunState.RoomMutators, DeepRun.Level, DeepRun.Picks, catalog, RunState.Mode == RunMode.Daily ? "daily" : null);
+            built.mods.GrazeCapBonus += grazeSurge;   // Redline Surge, earned in the previous room
+            grazeSurge = 0;
             GameState.Flags.Clear();
             foreach (var f in built.flags) GameState.Flags.Add(f);
-            foreach (var m in RunState.RoomMutators) GameState.Flags.Add("mut:" + m.id);
-            RunPerks.Clear();
-            foreach (var e in RunState.Held)
-                foreach (var f in e.effects)
-                    switch (f.stat)
-                    {
-                        case "flag:heat_sink": RunPerks.HeatSinkTo = f.value; break;
-                        case "flag:coolant_leak": RunPerks.CoolantLeak = f.value; break;
-                        case "flag:heat_exchange": RunPerks.HeatExchange = f.value; break;
-                        case "flag:packet_loss": RunPerks.PacketLoss = true; break;
-                    }
+            if (RunRules.AuditorDrones(node, spec)) GameState.Flags.Add(RunRules.AuditorDronesFlag);
+            PerkBinder.Bind(RunState.Held, built.flags);
             RoomManager.StartMelt = built.flags.Contains("flag:cold_boot") ? 0f : RunState.MeltCarry;
             GameState.Seed = spec.seed;
             ctx = new ConditionContext { node = node.index + 1, melt = RoomManager.StartMelt };
-            GameState.Mods = Conditions.Apply(built.mods, built.conditional, ctx);
+            GameState.Mods = LiveMods(ctx);
         }
 
         void OnBuilt(IDisposable handle, int run)
@@ -353,16 +431,18 @@ namespace Desync.Flow
             SpawnDeadZones();
             EnemyFlags.Refresh();   // this room's flags, with its geometry in place, before any factory below reads them
             if (!RoomInfo.Current) Debug.LogError("[DESYNC] the built room has no RoomInfo");
-            else if (node.type == NodeType.Boss && arena)
+            else if (bossArena != null)
             {
-                EnemyFactory.Auditor(roomHost, roomHost.TransformPoint(new Vector3(Auditor.ArenaCenter.x, 0f, Auditor.ArenaCenter.y)));
-                RoomInfo.Current.terminalCount = AuditorTerminals;
+                RunBosses.Factories[bossArena.boss](roomHost, roomHost.TransformPoint(new Vector3(bossArena.at.x, 0f, bossArena.at.y)));
+                CurrentBoss = bossArena.boss;
+                if (bossArena.terminals > 0) RoomInfo.Current.terminalCount = bossArena.terminals;   // the arena's hacks open the exit
             }
             RoomManager.I.Activate();
         }
 
         /// RoomManager: the run room's id, medal time and par score. Generated rooms: tDev = par seconds / 1.6 (silver = par).
-        /// OVERCLOCK tightens the medal times (gold included) by its value (15 %).
+        /// OVERCLOCK tightens the medal times (gold included) by its value (15 %), Tight Deadline by its own (10/20/30 %);
+        /// under Tight Deadline the room also gains a TRACE when its clock passes the tightened par (silver time).
         internal void Targets(RoomInfo info, out string id, out float tDev, out int parScore)
         {
             id = RunState.NodeId;
@@ -372,7 +452,10 @@ namespace Desync.Flow
                 tDev = spec.par / 1.6f;
                 parScore = RoomReports.FallbackPar(info.terminalCount);
             }
-            tDev *= 1f - MutatorValue("flag:overclock");
+            float tight = DeepRules.Value(DeepRun.Picks, catalog, "flag:tight_deadline");
+            tDev *= (1f - MutatorValue("flag:overclock")) * (1f - tight);
+            deadline = tight > 0f && tDev > 0f ? Medals.Threshold(Medal.Silver, tDev) : -1f;
+            deadlineDone = false;
         }
 
         /// The data value of a room mutator's flag effect (0 when no room mutator carries it).
@@ -403,8 +486,12 @@ namespace Desync.Flow
             RunState.RunTime += r.time;
             RunState.Fragments += RunRules.RoomFragments(r.medal, r.grade);
             RunState.Cycles += RunRules.RoomCycles(r.grade, node.type == NodeType.Elite);
-            RunState.MeltCarry = GameState.Melt * RunRules.MeltCarryShare;
+            RunState.MeltCarry = GameState.Melt * DeepRules.CarryShare(DeepRun.Picks, catalog, RunRules.MeltCarryShare);   // Persistent Melt: 100 %
             bestChain = Math.Max(bestChain, chain);
+            if (PerkBinder.GhostCache && chain >= 10 && RunRules.GhostCacheReroll(++ghostCacheHits, DeepRules.Has(DeepRun.Picks, "fewer_choices")))
+                RunState.Rerolls++;   // Ghost Cache: exit a room with a chain >= 10
+            grazeSurge = GameState.Flags.Contains("flag:redline_surge") && ScoreKeeper.I ? ScoreKeeper.I.Redlines : 0;
+            if (node.type == NodeType.Boss && RunUnlocks.RecordKill(SaveService.Data, node.act)) SaveService.Save();   // first kill: act / Deep Layer unlocks
             SetPhase(RunPhase.Results);
             var g = new StringBuilder(RunState.Grades.Count * 2);
             foreach (var c in RunState.Grades) { if (g.Length > 0) g.Append(' '); g.Append(c); }
@@ -455,32 +542,8 @@ namespace Desync.Flow
             foreach (var m in zoneMeshes) if (m) Destroy(m);
             zoneMeshes.Clear();
             RunPerks.DeadZones.Clear();
-        }
-
-        RoomSpec BossArena()
-        {
-            var ta = Resources.Load<TextAsset>("Content/bosses/auditor");
-            if (ta)
-            {
-                try
-                {
-                    var s = JsonConvert.DeserializeObject<RoomSpec>(ta.text);
-                    if (s?.tiles != null && s.tiles.Length > 0)
-                    {
-                        s.seed = node.roomSeed;
-                        s.act = node.act;
-                        s.node = node.index;
-                        s.entities ??= new List<EntitySpawn>();
-                        if (s.gridW <= 0) s.gridW = s.tiles[0].Length / 16;
-                        if (s.gridH <= 0) s.gridH = s.tiles.Length / 16;
-                        arena = true;
-                        return s;
-                    }
-                }
-                catch (Exception e) { Debug.LogWarning("[DESYNC] bosses/auditor.json unreadable: " + e.Message); }
-            }
-            Debug.LogWarning("[DESYNC] no AUDITOR arena data yet: the boss node plays a generated room");
-            return Generator.GenerateRoom(node.roomSeed, node.act, node.index, 0, chunks);
+            CurrentBoss = null;
+            BossEvents.Reset();   // a boss's melt / desync split / Current must not outlive its room (Destroy lands at frame end)
         }
 
         /// DEAD_ZONES: 1..N striped floor strips (N = the mutator's value) where SPACE does nothing.
@@ -550,7 +613,7 @@ namespace Desync.Flow
         void RollOffer()
         {
             RunState.Offer.Clear();
-            RunState.Offer.AddRange(Loadout.RollOffer(draftRng, draftPool, RunState.Held, draftRarePlus));
+            RunState.Offer.AddRange(Loadout.RollOffer(draftRng, runPool, RunState.Held, draftRarePlus, DeepRules.Has(DeepRun.Picks, "fewer_choices")));
         }
 
         void OnPickExploit(int i)
@@ -590,8 +653,14 @@ namespace Desync.Flow
         void OpenMarket()
         {
             RunState.Market.Clear();
-            RunState.Market.AddRange(RunRules.MarketStock(Rng.Substream(node.roomSeed, "market"), draftPool, RunState.Held,
-                                                          !backupSold && RunState.Backups < RunRules.MaxBackups));
+            RunState.Market.AddRange(RunRules.MarketStock(Rng.Substream(node.roomSeed, "market"), runPool, RunState.Held,
+                                                          !NoBackups && !backupSold && RunState.Backups < RunRules.MaxBackups));
+            for (int i = 0; i < RunState.Market.Count; i++)   // Poor Market: +50 %
+            {
+                var it = RunState.Market[i];
+                it.price = DeepRules.Price(it.price, DeepRun.Picks, catalog);
+                RunState.Market[i] = it;
+            }
             SetPhase(RunPhase.Market);
         }
 
@@ -609,7 +678,7 @@ namespace Desync.Flow
                     RunState.Held.Add(e);
                     break;
                 case "backup":
-                    if (backupSold || RunState.Backups >= RunRules.MaxBackups) return;
+                    if (NoBackups || backupSold || RunState.Backups >= RunRules.MaxBackups) return;
                     RunState.Backups++;
                     backupSold = true;
                     break;
@@ -644,7 +713,7 @@ namespace Desync.Flow
             switch (i)
             {
                 case 0: RunState.MeltCarry = 0f; break;
-                case 1: RunState.Backups = Math.Min(RunRules.MaxBackups, RunState.Backups + 1); break;
+                case 1: if (NoBackups) return; RunState.Backups = Math.Min(RunRules.MaxBackups, RunState.Backups + 1); break;   // No Backups: not on offer
                 case 2: RunState.Rerolls++; break;
                 default: return;
             }

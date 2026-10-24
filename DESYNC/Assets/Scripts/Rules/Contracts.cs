@@ -25,6 +25,7 @@ namespace Desync.Rules
         public float FlipCost, SourceRise, RenderDrain, TraceWindow, ChainWindow, ChainCap, ScoreMult,
                      MoveSpeedMult, IceSpeedMult, RedlineThreshold, CameraRangeMult;
         public int HackLengthDelta;
+        public int GrazeCapBonus;   // GRAZE payments per (room, ICE) above Scoring.GrazeCapPerIce (Redline Surge); default 0
 
         public static Modifiers Default => new Modifiers
         {
@@ -96,7 +97,7 @@ namespace Desync.Rules
             return r >= 1.0 ? 'S' : r >= 0.75 ? 'A' : r >= 0.5 ? 'B' : 'C';
         }
         /// Replays the log in order: CleanFlip adds 1 to chain then pays at the new multiplier, ChainBreak/Detected/Death reset it; each scoring event pays
-        /// points * GhostMultiplier(chain, m.ChainCap) * m.ScoreMult. Graze capped per (room, ice). Exit pays Redline
+        /// points * GhostMultiplier(chain, m.ChainCap) * m.ScoreMult. Graze capped per (room, ice) at GrazeCapPerIce + m.GrazeCapBonus. Exit pays Redline
         /// only when Melt >= m.RedlineThreshold. Pure function: the server recomputes with it.
         public static int ScoreFromEvents(IReadOnlyList<RunEvent> events, in Modifiers m)
         {

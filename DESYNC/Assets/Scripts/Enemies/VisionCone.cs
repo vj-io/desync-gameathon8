@@ -5,6 +5,8 @@ namespace Desync.Enemies
     /// Sensor cone on cameras, drones and the Architect. LOS = raycasts from this transform (the eye) to PlayerRef.Head and
     /// PlayerRef.Chest, blocked by WallRender|Floor. Seen for traceDwell seconds -> TraceSystem. Visuals: additive cone mesh
     /// (mat.cone / mat.cone.trace) + a shadowless spot light coloured by state. Active only in RENDER unless bothLayers.
+    /// Exploits: Spoofed Badge (ignore the first camera detection), Proxy Chain (cameras add no TRACE at chain >= 5), a visible
+    /// decoy distracts the cone (Afterimage / Poltergeist), Sysadmin Key (cones drawn through walls: Art.ConeMats x-ray materials).
     public class VisionCone : MonoBehaviour, IResettable
     {
         public float angle = 60f;          // full cone angle, degrees
@@ -42,12 +44,18 @@ namespace Desync.Enemies
             float dt = EnemyKit.Step(ref _last);
             bool active = Active;
             bool blinded = active && blindable && !Jammer && HijackedDrone.Jams(this);
-            if (active && !Jammer && !blinded && CanSeePlayer())
+            bool canSee = active && !Jammer && !blinded;
+            if (canSee && Distracted()) _dwell = 0f;   // a visible decoy pulls this cone off the player (Afterimage / Poltergeist)
+            else if (canSee && CanSeePlayer())
             {
                 if (_dwell <= 0f) GameEvents.Spotted?.Invoke(transform.position);
                 _dwell += dt + 1e-6f;
                 TraceSystem.Seen(PlayerRef.Position);
-                if (_dwell >= GameState.Mods.Clamped().TraceWindow) TraceSystem.Sustain();
+                if (_dwell >= GameState.Mods.Clamped().TraceWindow && !(Kind == 1 && ExploitFlags.CameraTraceOff))   // Proxy Chain
+                {
+                    if (Kind == 1 && ExploitFlags.SpoofedBadge && !ExploitFlags.SpoofUsed) { ExploitFlags.SpoofUsed = true; _dwell = 0f; }   // Spoofed Badge
+                    else TraceSystem.Sustain();
+                }
             }
             else _dwell = 0f;
             Show(active, blinded);
@@ -55,16 +63,20 @@ namespace Desync.Enemies
             if (mult != _mult) Rescale(mult);
         }
 
+        /// A live decoy sits in this cone with line of sight: the cone locks onto it instead of the player (no player TRACE).
+        bool Distracted() => Decoys.Count > 0 && Decoys.Nearest(transform.position, Range, out Vector3 p, out _) && SeesPoint(p);
+
         bool CanSeePlayer()
         {
             if (GameState.DemoMode || GameState.Cinematic || !GameState.Alive || !PlayerRef.Exists) return false;
             return Sees(PlayerRef.Head) || Sees(PlayerRef.Chest);
         }
 
-        bool Sees(Transform target)
+        bool Sees(Transform target) => target && SeesPoint(target.position);
+
+        bool SeesPoint(Vector3 point)
         {
-            if (!target) return false;
-            Vector3 eye = transform.position, d = target.position - eye;
+            Vector3 eye = transform.position, d = point - eye;
             float m = d.magnitude;
             if (m > Range || Vector3.Angle(transform.forward, d) > angle * 0.5f) return false;
             return m < 1e-3f || !Physics.Raycast(eye, d / m, m, EnemyKit.SightMask, QueryTriggerInteraction.Ignore);
@@ -81,6 +93,7 @@ namespace Desync.Enemies
             {
                 coneRenderer.enabled = s != 0;
                 var m = s == 3 ? traceMat : normalMat;
+                if (ExploitFlags.SysadminKey) { var x = Art.ConeMats.Get(s == 3, true); if (x) m = x; }   // depth test Always: through walls
                 if (m) coneRenderer.sharedMaterial = m;
             }
             if (!spot) return;

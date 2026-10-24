@@ -1,6 +1,9 @@
 // WorldMat: every room surface and prop (mat.world) and floors (mat.floor, grid on).
 // RENDER: flat vertex colour + half-lambert + spot pools, glowing cyan->magenta outline edges (quad diagonals suppressed), navy fog.
 // SOURCE (global keyword _SOURCE, dynamic branch): green full wireframe + world-space glyph columns scrolling down, faint fill.
+// 'X' walls (solid in both layers) carry vertex alpha <= 0.3 (Desync.Art.WorldFlags.SolidAlpha, written by the room builder): in SOURCE they draw as a
+// dense 45-degree hatched slab with a heavy outline instead of the thin wireframe, so a wall you cannot cross never reads as passable.
+// Colour-blind palette (global _Colorblind, see DesyncCommon.hlsl) swaps the edge / source colours; shapes and patterns carry the rest.
 // SOURCE transparency is a blend-state change the keyword cannot make: PostFXController.SetWorldBlend switches
 // _SrcBlend/_DstBlend/_ZWrite/_Cull/renderQueue on the shared materials (additive, no depth write, both faces) on LayerState.Changed.
 Shader "Desync/World"
@@ -134,6 +137,8 @@ Shader "Desync/World"
                 float diag = EdgeCore(EdgePixels(raw), _EdgeWidth * 0.8) * valid;
                 float wire = max(outline, diag * _SourceMix.w);
                 float halo = EdgeHalo(EdgePixels(clean), _EdgeGlow.y) * valid;
+                float heavy = EdgeCore(EdgePixels(clean), _EdgeWidth * 2.4) * valid;   // 'X' wall outline
+                float3 src = lerp(_SourceColor.rgb, _CbSource.rgb, _Colorblind);
 
                 // Glyph columns on the dominant world plane (1 texture read).
                 float3 an = abs(n);
@@ -154,12 +159,21 @@ Shader "Desync/World"
                 float glyph = SampleGlyph(cellUV, id, ddx(cellUV), ddy(cellUV));
                 float lum = dot(i.color.rgb, float3(0.3, 0.59, 0.11));
 
+                // Solid slab: derivatives are taken here, outside any branch (stripes + edges), then selected by the flag.
+                float solid = step(i.color.a, 0.3);
+                float hatch = Stripes((p.x + p.y) * 6.0);
+
                 // Additive in SOURCE: fog fades to black; lines carry further into the fog than fill and glyphs.
-                float3 col = _SourceColor.rgb * (
+                // ponytail: additive cannot occlude what was drawn behind a slab; the dense fill hides it in practice. Premultiplied alpha + depth if it ever shows.
+                float3 thin = src * (
                       (_SourceMix.x * (0.6 + 2.0 * lum) + glyph * (0.05 + bright) * _SourceMix.z) * vis
                     + (wire * _SourceMix.y + halo * 0.1 + grid * 0.3) * sqrt(vis)
                     + wave * (0.25 + wire + 0.5 * glyph));
-                return half4(col, 1.0);
+                float3 slab = src * (
+                      (0.14 + 0.3 * hatch) * vis
+                    + (heavy * 1.5 + halo * 0.25) * sqrt(vis)
+                    + wave * (0.25 + heavy));
+                return half4(lerp(thin, slab, solid), 1.0);
             }
             else
             {
@@ -187,9 +201,10 @@ Shader "Desync/World"
                 float core = EdgeCore(px, _EdgeWidth) * valid;
                 float halo = EdgeHalo(px, _EdgeGlow.y) * valid;
                 float h = saturate((i.positionWS.y - _EdgeGradient.x) / max(_EdgeGradient.y, 1e-3));
-                float3 edgeCol = lerp(_EdgeColorLow.rgb, _EdgeColorHigh.rgb, h);
+                float3 lowCol = lerp(_EdgeColorLow.rgb, _CbRenderLow.rgb, _Colorblind);
+                float3 edgeCol = lerp(lowCol, lerp(_EdgeColorHigh.rgb, _CbRenderHigh.rgb, _Colorblind), h);
                 float3 glow = edgeCol * (core * _EdgeGlow.x + halo * _EdgeGlow.z) * (1.0 + 2.0 * wave)
-                            + _GridColor.rgb * grid * (1.0 + 2.0 * wave);
+                            + lerp(_GridColor.rgb, _CbRenderLow.rgb, _Colorblind) * grid * (1.0 + 2.0 * wave);
 
                 float3 col = MixFog(base, i.fogFactor) + glow * sqrt(vis);
                 return half4(col, 1.0);

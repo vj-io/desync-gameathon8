@@ -41,6 +41,16 @@ namespace Desync.Enemies
             return m <= range && (m < 1e-3f || Vector3.Angle(fwd, d) <= angle * 0.5f);
         }
 
+        /// "<prefix><n>", n = 1-based order of `c` among its siblings carrying a T (the room builder's order). Allocates: cache it.
+        public static string SiblingId<T>(Component c, string prefix) where T : Component
+        {
+            int n = 1;
+            var t = c.transform;
+            var p = t.parent;
+            if (p) for (int i = 0, me = t.GetSiblingIndex(); i < me; i++) if (p.GetChild(i).GetComponent<T>()) n++;
+            return prefix + n;
+        }
+
         public static void Kill(Object o)
         {
             if (!o) return;

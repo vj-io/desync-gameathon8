@@ -10,9 +10,11 @@ namespace Desync.UI
     public sealed class PauseScreen : UIPanel
     {
         GlitchLabel _head; TMP_Text _sub, _sensVal, _volVal;
-        Slider _sens, _vol; NeonToggle _shake, _flash, _fx, _bob;
+        Slider _sens, _vol; NeonToggle _shake, _flash, _fx, _bob, _cb, _subs;
         UIButton _res75, _res100;
         RectTransform _panel; Tween _pop, _pulse;
+        /// The last Show() was "click to resume" (the pointer was released); the UIManager keeps it across a canvas rebuild.
+        internal bool LockLost { get; private set; }
 
         protected override void Create()
         {
@@ -20,7 +22,7 @@ namespace Desync.UI
             var dimmer = UIKit.Img(Root, "Dim", new Color(0f, 0f, 0.03f, 0.74f)); UIKit.Stretch(dimmer.rectTransform); dimmer.raycastTarget = true;
 
             var panel = UIKit.Box(Root, "Panel", new Color(cyan.r, cyan.g, cyan.b, 0.7f), 0.94f);
-            _panel = UIKit.Place(panel.rectTransform, Anc.C, Vector2.zero, new Vector2(1240, 880));
+            _panel = UIKit.Place(panel.rectTransform, Anc.C, Vector2.zero, new Vector2(1240, 980));
 
             _head = GlitchLabel.Create(panel.transform, "Head", Anc.T, new Vector2(0, -34), new Vector2(1100, 120), UIKit.Title, 84, paper, TextAlignmentOptions.Center, 3f, true, 8f);
             _sub = UIKit.Text(panel.transform, "Sub", UIKit.Hud, 24, dim, TextAlignmentOptions.Center, "SESSION SUSPENDED"); _sub.characterSpacing = 8f;
@@ -60,11 +62,14 @@ namespace Desync.UI
             _flash = UIControls.NewToggle(panel.transform, "Flash", "REDUCE FLASHES", Anc.T, new Vector2(cx, -512), w, Settings.ReduceFlashes, v => { Settings.ReduceFlashes = v; Changed(); });
             _fx = UIControls.NewToggle(panel.transform, "ReduceFx", "REDUCE FX", Anc.T, new Vector2(cx, -562), w, Settings.ReduceFx, v => { Settings.ReduceFx = v; Changed(); });   // shake x0, flashes off, chromatic x0.3
             _bob = UIControls.NewToggle(panel.transform, "Bob", "HEAD-BOB", Anc.T, new Vector2(cx, -612), w, Settings.HeadBob, v => { Settings.HeadBob = v; Changed(); });
+            // Accessibility: the colour-blind palette (UIManager rebuilds every screen in the new hues) and Architect subtitles.
+            _cb = UIControls.NewToggle(panel.transform, "Colorblind", "COLORBLIND PALETTE", Anc.T, new Vector2(cx, -662), w, Desync.Art.Palette.Colorblind, v => { Desync.Art.Palette.Colorblind = v; Changed(); });
+            _subs = UIControls.NewToggle(panel.transform, "Subtitles", "SUBTITLES", Anc.T, new Vector2(cx, -712), w, Subtitles.Enabled, v => { Subtitles.Enabled = v; Changed(); });
 
             var rl = UIKit.Text(panel.transform, "ResLabel", UIKit.Hud, 28, paper, TextAlignmentOptions.Left, "RESOLUTION SCALE");
-            UIKit.Place(rl.rectTransform, Anc.T, new Vector2(cx - 90, -668), new Vector2(w - 130, 40));
-            _res75 = UIButton.Create(panel.transform, "Res75", "75%", Anc.T, new Vector2(cx + 86, -668), new Vector2(104, 44), 24, cyan, () => SetRes(0.75f), UIKit.Hud);
-            _res100 = UIButton.Create(panel.transform, "Res100", "100%", Anc.T, new Vector2(cx + 198, -668), new Vector2(104, 44), 24, cyan, () => SetRes(1f), UIKit.Hud);
+            UIKit.Place(rl.rectTransform, Anc.T, new Vector2(cx - 90, -768), new Vector2(w - 130, 40));
+            _res75 = UIButton.Create(panel.transform, "Res75", "75%", Anc.T, new Vector2(cx + 86, -768), new Vector2(104, 44), 24, cyan, () => SetRes(0.75f), UIKit.Hud);
+            _res100 = UIButton.Create(panel.transform, "Res100", "100%", Anc.T, new Vector2(cx + 198, -768), new Vector2(104, 44), 24, cyan, () => SetRes(1f), UIKit.Hud);
 
             // ---- buttons
             UIButton.Create(panel.transform, "Resume", "RESUME", Anc.B, new Vector2(-380, 54), new Vector2(340, 86), 44, cyan, () => GameEvents.ResumeRequested?.Invoke());
@@ -89,6 +94,7 @@ namespace Desync.UI
         public void Show(bool lockLost)
         {
             base.Show();
+            LockLost = lockLost;
             _head.Reveal(lockLost ? "CLICK TO RESUME" : "PAUSED", 0.25f);
             _sub.SetText(lockLost ? "POINTER RELEASED · CLICK / START / A TO RE-ENTER" : "SESSION SUSPENDED · START / A TO RESUME");
             _sub.color = lockLost ? UIKit.Magenta : UIKit.Dim;
@@ -96,6 +102,7 @@ namespace Desync.UI
             _sens.SetValueWithoutNotify(Settings.Sensitivity); _sensVal.SetText("{0:0.00}", Settings.Sensitivity);
             _vol.SetValueWithoutNotify(Settings.Volume); _volVal.SetText("{0:0}%", Mathf.Round(Settings.Volume * 100f));
             _shake.Set(Settings.Shake); _flash.Set(Settings.ReduceFlashes); _fx.Set(Settings.ReduceFx); _bob.Set(Settings.HeadBob);
+            _cb.Set(Desync.Art.Palette.Colorblind); _subs.Set(Subtitles.Enabled);
             PaintRes();
             UIKit.Pop(ref _pop, _panel, 0.9f, 0.22f);
             UIKit.Kill(ref _pulse);

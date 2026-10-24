@@ -155,7 +155,7 @@ namespace Desync.Flow
             GameState.TraceCountdown = room && room.traceCountdown > 0f ? room.traceCountdown : -1f;
             GameState.Flips = 0;
             GameState.TerminalsDone = 0;
-            GameState.TerminalsTotal = room ? room.terminalCount : 0;
+            GameState.TerminalsTotal = room ? TerminalsNeeded(room.terminalCount, Backdoor()) : 0;
             GameState.ExitOpen = false;
             GameState.InHack = false;
             GameState.Cinematic = false;
@@ -180,6 +180,13 @@ namespace Desync.Flow
             }
             GameState.Melt = StartMelt;   // MeltMeter.ResetState zeroed it
         }
+
+        /// Backdoor: rooms have no locked doors, so the exploit opens the exit one terminal early (never below one).
+        public static int TerminalsNeeded(int terminals, bool backdoor) => backdoor && terminals > 1 ? terminals - 1 : terminals;
+
+        /// Read once per room start / REBOOT (D-013). Not on a boss node: its uplink phases count every terminal.
+        bool Backdoor() => run && GameState.Flags.Contains("flag:backdoor")
+                           && RunManager.I.CurrentNode != null && RunManager.I.CurrentNode.type != Gen.NodeType.Boss;
 
         void Update()
         {

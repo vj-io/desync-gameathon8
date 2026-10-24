@@ -66,6 +66,16 @@ public class ScoringTests
         ev.Add(new RunEvent(7, EventType.Graze, "r2", "ice1"));
         Assert.AreEqual(750, Scoring.ScoreFromEvents(ev, Modifiers.Default));
     }
+    [Test] public void SCORE_05b_GrazeCapBonusRaisesThePerIceCap()
+    {
+        Assert.AreEqual(0, Modifiers.Default.GrazeCapBonus);
+        var ev = Enumerable.Range(0, 6).Select(i => new RunEvent(i, EventType.Graze, "r1", "ice1")).ToList();
+        var m = Modifiers.Default; m.GrazeCapBonus = 2;   // Redline Surge after two REDLINE exits
+        Assert.AreEqual(5 * 150, Scoring.ScoreFromEvents(ev, m));
+        var tally = new ScoreTally();
+        double paid = 0; foreach (var e in ev) paid += tally.Apply(e, m);
+        Assert.AreEqual(5 * 150, paid, 1e-6, "the live tally agrees with the replay");
+    }
     [Test] public void SCORE_06_RedlineOnlyAt90()
     {
         Assert.AreEqual(0, Scoring.ScoreFromEvents(new[] { new RunEvent(1, EventType.Exit, "r1", melt: 89.9f) }, Modifiers.Default));

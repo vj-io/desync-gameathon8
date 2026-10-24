@@ -11,6 +11,7 @@ Shader "Desync/Glow"
         _EdgeColor ("Edge colour", Color) = (1, 0.169, 0.839, 1)
         _EdgeGlow ("Edge (intensity, core px, halo px, halo)", Vector) = (1.5, 1.1, 6, 0.4)
         _Anim ("Anim (pulse speed, pulse amount, flicker, 0)", Vector) = (0, 0, 0, 0)
+        _Hazard ("Threat body (0/1): colour-blind palette adds moving stripes + the danger colour", Float) = 0
     }
 
     SubShader
@@ -40,6 +41,7 @@ Shader "Desync/Glow"
                 half4 _EdgeColor;
                 float4 _EdgeGlow;
                 float4 _Anim;
+                float _Hazard;
             CBUFFER_END
 
             struct Attributes
@@ -95,10 +97,14 @@ Shader "Desync/Glow"
                 float flicker = 1.0 - _Anim.z * step(0.8, Hash11(floor(t * 18.0) + pivot.x * 13.7 + pivot.z * 3.1));
 
                 half3 vc = lerp(half3(1, 1, 1), i.color.rgb, _VertexColorWeight);
+                float cb = _Hazard * _Colorblind;   // threat bodies only: danger colour + moving diagonal stripes (pattern, not just hue)
+                float3 rimCol = lerp(_RimColor.rgb, _CbDanger.rgb, cb);
+                float3 edgeCol = lerp(_EdgeColor.rgb, _CbDanger.rgb, cb);
                 float3 col = _BaseColor.rgb * vc * lerp(0.6, 1.0, hl)
-                           + _RimColor.rgb * rim * _RimColor.a
-                           + _EdgeColor.rgb * edge * _EdgeGlow.x;
+                           + rimCol * rim * _RimColor.a
+                           + edgeCol * edge * _EdgeGlow.x;
                 col *= pulse * flicker;
+                col *= lerp(1.0, 0.3 + 1.4 * Stripes((i.positionWS.x + i.positionWS.y + i.positionWS.z) * 3.0 - t * 0.6), cb);
                 return half4(MixFog(col, i.fogFactor), 1.0);
             }
             ENDHLSL

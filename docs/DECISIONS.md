@@ -25,3 +25,11 @@
 **D-012 Deep Layer heat totals 40.** The spec's per-rank heat values sum to 46 while the spec and MUT-01 require 40; trimmed: Hair Trigger 2/4 → 1/2; Expensive Flip, Unstable Reality, Persistent Melt and Auditor Protocol 2 → 1. `ranks[r-1]` is the total heat at rank r. Spec "x → y" changes are stored as additive deltas so effects stack before clamping.
 
 **D-013 Exploit flags.** `Loadout.Build` returns `flags` for behaviour the game implements. The run manager writes them (plus run-mutator flags) into `GameState.Flags` at room start; Player/Flow/Enemies check them once per room (cached), never per frame by string.
+
+**D-014 Deep Layer model.** The player picks mutators and ranks; the level equals the picks' total heat. Each level has a default preset (ladder: tight_deadline, hardened_ice, poor_market, long_sequences, unstable_reality, persistent_melt, wider_lens, hot_silicon, hardened_ice 2, tight_deadline 2). DL 1 opens with the first ARCHITECT kill; the highest level available is one above the best level won (cap 10 in M3). Rooms get `mut:<id>` per pick plus their flags; from DL 6 also `flag:boss_overclock`. Fragments +10 % per level (cap DL 20) before the 40 % death rule. Boss kill flags (`kill_auditor`, `kill_compiler`, `kill_architect`) live in `SaveV3.unlocks`; acts 2 and 3 open through the previous boss kill. Heat threats (Double Patrol, Tracker Swarm, Unstable Reality, Gaze Everywhere) draw from their own stream and are not budgeted.
+
+**D-015 Human guards.** HALCYON security officers are RENDER-only people: patrol, chase (slower than the player), telegraphed strike; walls stop them; flipping to SOURCE escapes them and freezes them. Death cause `Guard`.
+
+**D-016 Story mode.** A first-time prompt on the title offers a 60–90 s in-engine story (text, motion, the game's own scenes and sound; no voice-over), then Room 1 with story-guided prompts. Replayable from the title menu.
+
+**D-017 Graze cap bonus.** `Modifiers.GrazeCapBonus` (appended, default 0) raises the per-ICE graze cap to `GrazeCapPerIce + GrazeCapBonus`. Only `redline_surge` sets it: +1 per REDLINE exit in the cleared room, for the next room played only.

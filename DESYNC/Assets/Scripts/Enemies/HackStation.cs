@@ -8,9 +8,10 @@ namespace Desync.Enemies
     /// for terminalWrongLockout. Complete -> OnHacked(). Cancel (HackCancelled): E again, death, or the player > range away.
     /// SOURCE presentation: room >= 3 shows arrows mirrored left/right; room >= 4 shows glyph noise with brief true flashes.
     /// Expected input is always the true sequence (flip to RENDER to read it). The sequence is seeded -> identical restarts.
+    /// Scrambled Prompts (heat mutator): ScrambledShare of stations show their arrows mirrored in both layers (Mirrored).
     public abstract class HackStation : MonoBehaviour, IInteractable, IResettable
     {
-        public const float CancelSlack = 1f, NoiseStep = 0.08f, FlashPeriod = 1.1f, FlashLength = 0.16f;
+        public const float CancelSlack = 1f, NoiseStep = 0.08f, FlashPeriod = 1.1f, FlashLength = 0.16f, ScrambledShare = 0.3f;
         const string Arrows = "↑→↓←";              // up, right, down, left
         const string Noise = "#%&@$?!/\\|<>=+*0123456789";
 
@@ -38,8 +39,8 @@ namespace Desync.Enemies
         public int Step => _step;
         public int Expected(int i) => Seq[i];
 
-        /// Arrows to enter: the station's length plus the run's HackLengthDelta, never fewer than 3.
-        public int SequenceLength => Mathf.Max(3, Length + GameState.Mods.HackLengthDelta);
+        /// Arrows to enter: the station's length plus the run's HackLengthDelta, never fewer than 3 (2 under Brute Force).
+        public int SequenceLength => Mathf.Max(ExploitFlags.BruteForce ? 2 : 3, Length + GameState.Mods.HackLengthDelta);
 
         int[] Seq
         {
@@ -63,6 +64,7 @@ namespace Desync.Enemies
             _startFrame = Time.frameCount;
             GameState.InHack = true;
             GameEvents.HackStarted?.Invoke();
+            if (ExploitFlags.GhostPing) Decoys.Spawn(transform.position, ExploitFlags.GhostPingDrone, DecoyKind.Noise);   // the noise pulls the nearest drone 3 s
         }
 
         protected virtual void Update()
@@ -121,8 +123,26 @@ namespace Desync.Enemies
             return d.sqrMagnitude > r * r;
         }
 
-        /// 0 = true arrows, 1 = mirrored, 2 = scrambled.
-        int Mode => !LayerState.InSource ? 0 : room >= 4 ? 2 : room >= 3 ? 1 : 0;
+        /// Scrambled Prompts: this station's arrows read mirrored in both layers. Rolled from its seed and the room seed, so the
+        /// same stations are mirrored on every attempt of a room.
+        public bool Mirrored => ExploitFlags.ScrambledPrompts && ScrambleRoll((uint)seed ^ GameState.Seed) < ScrambledShare;
+
+        /// [0, 1) from a 32-bit hash (murmur3 finaliser): consecutive seeds give unrelated rolls.
+        public static float ScrambleRoll(uint x)
+        {
+            x ^= x >> 16; x *= 0x85EBCA6Bu; x ^= x >> 13; x *= 0xC2B2AE35u; x ^= x >> 16;
+            return (x & 0xFFFFFF) / 16777216f;
+        }
+
+        /// 0 = true arrows, 1 = mirrored, 2 = scrambled. Overclock Hack reads the true sequence from SOURCE too (its melt is paid on completion).
+        int Mode
+        {
+            get
+            {
+                int m = (!LayerState.InSource || ExploitFlags.OverclockHack) ? 0 : room >= 4 ? 2 : room >= 3 ? 1 : 0;
+                return m == 0 && Mirrored ? 1 : m;
+            }
+        }
 
         // ---------- screen (char buffer -> TMP, no per-frame allocations) ----------
 
@@ -153,9 +173,10 @@ namespace Desync.Enemies
                     if (i > 0) Put(' ');
                     bool past = i < _step && hacking;
                     Put(past ? "<color=#00FF66>" : i == _step && hacking ? "<color=#FFFFFF>" : "<color=#8A93B8>");
+                    bool reveal = ExploitFlags.HallOfMirrors && hacking && i == _step;   // Hall of Mirrors shows the current arrow true
                     int d = seq[i];
-                    if (mode == 1) d = d == 1 ? 3 : d == 3 ? 1 : d;
-                    if (mode == 2 && !flash && !past) Put(Noise[(int)((uint)(tick * 31 + i * 17 + seed) * 2654435761u >> 7) % Noise.Length]);
+                    if (mode == 1 && !reveal) d = d == 1 ? 3 : d == 3 ? 1 : d;
+                    if (mode == 2 && !flash && !past && !reveal) Put(Noise[(int)((uint)(tick * 31 + i * 17 + seed) * 2654435761u >> 7) % Noise.Length]);
                     else Put(Arrows[d]);
                     Put("</color>");
                 }

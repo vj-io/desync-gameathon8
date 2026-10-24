@@ -10,7 +10,7 @@ namespace Desync.UI
 {
     /// In-room HUD. Everything is polled from GameState / events; text is only rewritten when its value changes
     /// (TMP.SetText with float args formats into an internal buffer: no per-frame allocation).
-    public sealed class HudScreen : UIPanel
+    public sealed partial class HudScreen : UIPanel
     {
         // ---- layer tag
         GlitchLabel _layer; TMP_Text _layerSub; bool _shownSource; Tween _layerTw; float _rejectT;
@@ -68,9 +68,9 @@ namespace Desync.UI
         CanvasGroup _cardGroup; RectTransform[] _chips; float _cardT; int _cardState; Tween _cardFade;
         // ---- BREACH run block: held exploits (bottom-right, glow while their condition holds), backups, room mutator chips
         GameObject _runGo; bool _runOn; string _nodeShown; int _nodeNum;
-        RectTransform[] _xRt; Image[] _xBorder, _xGlow; TMP_Text[] _xGlyph, _xInit; string[] _xWhen; bool[] _xLit; readonly Exploit[] _xShown = new Exploit[Loadout.MaxHeld]; int _xCount = -1;
+        RectTransform[] _xRt; Image[] _xBorder, _xGlow; CanvasGroup[] _xGroup; TMP_Text[] _xGlyph, _xInit; string[] _xWhen; bool[] _xLit; readonly Exploit[] _xShown = new Exploit[Loadout.MaxHeld]; int _xCount = -1;
         GameObject[] _mGo; TMP_Text[] _mText; readonly Mutator[] _mShown = new Mutator[2]; int _mCount = -1;
-        TMP_Text _backups; int _bShown = -1;
+        TMP_Text _backups, _deepTag; int _bShown = -1, _dlShown = -1;
         // ---- AUDITOR boss bar (under the layer tag) + Tracker ICE spawn cue (edge arrow toward the nest)
         GameObject _bossGo; TMP_Text _bossText; Image _bossFill; int _bossPhase = -1, _up10 = -2;
         RectTransform _trkRt; TMP_Text _trk; float _trkT; Vector3 _trkPos;
@@ -260,6 +260,7 @@ namespace Desync.UI
             UIKit.Place(_hint.rectTransform, Anc.L, new Vector2(140, 0), new Vector2(1236, 88));
             _hintGo.SetActive(false);
 
+            BuildM3();
             SetLayer(false, false);
             _timerL = new LiveText(_timer); _scoreL = new LiveText(_score); _multL = new LiveText(_mult); _ghostL = new LiveText(_ghost);
             _traceL = new LiveText(_traceText); _meltL = new LiveText(_melt); _glitchL = new LiveText(_glitchNum); _lockL = new LiveText(_lock);
@@ -315,10 +316,11 @@ namespace Desync.UI
         {
             var run = UIKit.Stretch(UIKit.Obj(Root, "Run")); _runGo = run.gameObject;
             int n = Loadout.MaxHeld;
-            _xRt = new RectTransform[n]; _xBorder = new Image[n]; _xGlow = new Image[n]; _xGlyph = new TMP_Text[n]; _xInit = new TMP_Text[n]; _xWhen = new string[n]; _xLit = new bool[n];
+            _xRt = new RectTransform[n]; _xBorder = new Image[n]; _xGlow = new Image[n]; _xGroup = new CanvasGroup[n]; _xGlyph = new TMP_Text[n]; _xInit = new TMP_Text[n]; _xWhen = new string[n]; _xLit = new bool[n];
             for (int i = 0; i < n; i++)
             {
                 var rt = UIKit.Place(UIKit.Obj(run, "Exploit" + i), Anc.BR, Vector2.zero, new Vector2(84, 84));
+                _xGroup[i] = rt.gameObject.AddComponent<CanvasGroup>();
                 _xGlow[i] = UIKit.Img(rt, "Glow", Color.clear, UIKit.Disc); UIKit.Stretch(_xGlow[i].rectTransform, -20, -20, -20, -20);
                 var bg = UIKit.Img(rt, "Bg", new Color(UIKit.Ink.r, UIKit.Ink.g, UIKit.Ink.b, 0.82f)); UIKit.Stretch(bg.rectTransform);
                 _xBorder[i] = UIKit.Img(rt, "Border", UIKit.Cyan); UIKit.Stretch(_xBorder[i].rectTransform);
@@ -329,6 +331,8 @@ namespace Desync.UI
             }
             _backups = UIKit.Text(run, "Backups", UIKit.Hud, 28, UIKit.Green, TextAlignmentOptions.Right); _backups.fontStyle = FontStyles.Bold; _backups.characterSpacing = 4f;
             UIKit.Place(_backups.rectTransform, Anc.BR, new Vector2(-36, 128), new Vector2(300, 36));
+            _deepTag = UIKit.Text(run, "DeepLayer", UIKit.Hud, 24, UIKit.Magenta, TextAlignmentOptions.Right); _deepTag.fontStyle = FontStyles.Bold; _deepTag.characterSpacing = 4f;
+            UIKit.Place(_deepTag.rectTransform, Anc.BR, new Vector2(-36, 166), new Vector2(420, 32)); _deepTag.gameObject.SetActive(false);
             _mGo = new GameObject[2]; _mText = new TMP_Text[2];
             for (int i = 0; i < 2; i++)   // under the room block (top-left): mutators belong to the room
             {
@@ -345,7 +349,7 @@ namespace Desync.UI
         void TickRun()
         {
             bool on = RunView.Active;
-            if (on != _runOn) { _runOn = on; _runGo.SetActive(on); _xCount = -1; _mCount = -1; _bShown = -1; }
+            if (on != _runOn) { _runOn = on; _runGo.SetActive(on); _xCount = -1; _mCount = -1; _bShown = -1; _dlShown = -1; }
             if (!on) return;
             if (GameState.Chain > RunView.BestChain) RunView.BestChain = GameState.Chain;
 
@@ -383,6 +387,11 @@ namespace Desync.UI
                     if (_mShown[i] != null) _mText[i].SetText(UIKit.Safe(_mShown[i].name.ToUpperInvariant(), UIKit.Hud));
                 }
             }
+            if (DeepRun.Level != _dlShown)   // Deep Layer: the level is the heat total
+            {
+                _dlShown = DeepRun.Level; _deepTag.gameObject.SetActive(_dlShown > 0);
+                if (_dlShown > 0) _deepTag.SetText("DEEP LAYER " + _dlShown + " · HEAT " + _dlShown);
+            }
             if (RunState.Backups != _bShown) { _bShown = RunState.Backups; _backups.SetText("BACKUP " + RunView.Backups(_bShown)); _backups.color = _bShown > 0 ? UIKit.Green : UIKit.Dim; }
 
             var ctx = RunView.Live(_nodeNum);
@@ -392,6 +401,8 @@ namespace Desync.UI
                 if (_xShown[i] != null && _xShown[i].rarity == Rarity.E) UIKit.AnimateBorder(_xBorder[i]);
                 bool lit = _xWhen[i] != null && Conditions.Eval(_xWhen[i], ctx);
                 if (lit != _xLit[i]) { _xLit[i] = lit; if (lit) _xRt[i].localScale = Vector3.one * 1.18f; }
+                float chipA = _xWhen[i] != null && !lit ? 0.5f : 1f;   // a conditional exploit waiting for its condition dims; lit = bright + glow
+                if (_xGroup[i].alpha != chipA) _xGroup[i].alpha = chipA;
                 if (lit || _xGlow[i].color.a > 0f)
                 {
                     var g = _xGlow[i].color; g.a = lit ? pulse : 0f; _xGlow[i].color = g;
@@ -404,9 +415,17 @@ namespace Desync.UI
         void TickBoss(float dt)
         {
             var a = Desync.Enemies.Auditor.Current;
-            bool on = a != null;
-            if (on != _bossGo.activeSelf) { _bossGo.SetActive(on); _bossPhase = -1; _up10 = -2; }
-            if (on)
+            var comp = Desync.Enemies.Compiler.Current; var arch = Desync.Enemies.ArchitectBoss.Current;
+            int kind = a != null ? 1 : comp != null ? 2 : arch != null ? 3 : 0;   // which boss owns the bar
+            bool on = kind != 0;
+            if (on != _bossGo.activeSelf || kind != _bossKind)
+            {
+                _bossKind = kind; _bossGo.SetActive(on); _bossPhase = -1; _up10 = -2; ResetBossExtras();
+                if (on) BossAppeared(kind);
+            }
+            if (kind == 2) TickCompiler(comp, dt);
+            else if (kind == 3) TickArchitect(arch, dt);
+            if (kind == 1)
             {
                 int ph = Mathf.Clamp(a.Phase, 1, 4);
                 float up = a.UplinkRemaining;
@@ -476,6 +495,7 @@ namespace Desync.UI
             for (int i = 0; i < _pops.Length; i++) { _pops[i].On = false; _pops[i].G.alpha = 0f; _pops[i].L.gameObject.SetActive(false); }
             for (int i = 0; i < _spops.Length; i++) { _spops[i].On = false; _spops[i].Rt.gameObject.SetActive(false); }
             _hintT = 0f; _hintGo.SetActive(false);
+            ClearM3();
             UIKit.Kill(ref _cardFade); _cardState = 0; _cardGroup.alpha = 0f; _cardGroup.gameObject.SetActive(false);
             for (int i = 0; i < _bars.Length; i++) { _barT[i] = 0f; _bars[i].gameObject.SetActive(false); }
             _cs = -1; _trLast = -1; _g10 = -1; _ls = -1; _h10 = -1; _tDev = -1f; _multPulse = 0f; _multRt.localScale = Vector3.one;
@@ -492,7 +512,8 @@ namespace Desync.UI
         void SetLayer(bool source, bool glitch)
         {
             _shownSource = source;
-            _layer.SetText(source ? "SOURCE" : "RENDER");
+            _layer.SetText(UIKit.Safe(LayerName(source), UIKit.Hud));
+            LayerFrame(source);
             _layer.SetColor(source ? UIKit.Green : UIKit.Cyan);
             _layerSub.SetText(source ? "THE TRUTH" : "THE LIE");
             _layerSub.color = source ? new Color(UIKit.Green.r, UIKit.Green.g, UIKit.Green.b, 0.7f) : UIKit.Dim;
@@ -651,6 +672,7 @@ namespace Desync.UI
 
             TickRun();
             TickBoss(dt);
+            TickM3(dt);
             TickTrace(dt);
             TickMelt(dt);
             TickCountdowns(dt, cfg);

@@ -250,7 +250,7 @@ namespace Desync.UI
                 c.Show(i < _count);
                 if (i >= _count) continue;
                 bool usable = Usable(i);
-                string foot = _chosen == i ? "APPLIED" : !usable ? "MAXED" : "";
+                string foot = _chosen == i ? "APPLIED" : !usable ? (NoBackups ? "NO BACKUPS" : "MAXED") : "";
                 switch (opts[i])
                 {
                     case "reset_melt": c.Set("▼", "COOLANT", "RESET MELT", "Carry-over melt " + Mathf.RoundToInt(RunState.MeltCarry) + "% → 0% for the next room.", UIKit.Cyan, 0, foot); break;
@@ -263,7 +263,9 @@ namespace Desync.UI
             }
         }
 
-        bool Usable(int i) => !(RunState.CooldownOptions[i] == "backup" && RunState.Backups >= RunRules.MaxBackups);
+        /// Deep Layer No Backups: the run refuses the +1 BACKUP (RunManager.OnChooseCooldown), so it is shown greyed out.
+        static bool NoBackups => DeepRules.Has(DeepRun.Picks, "no_backups");
+        bool Usable(int i) => !(RunState.CooldownOptions[i] == "backup" && (NoBackups || RunState.Backups >= RunRules.MaxBackups));
 
         void Focus(int f)
         {
